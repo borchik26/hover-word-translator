@@ -1,7 +1,11 @@
+import gzip
+import io
 import json
 import os
+import shutil
 import tempfile
 import unittest
+from unittest import mock
 
 import build_dict
 
@@ -32,7 +36,11 @@ class BuildDictTest(unittest.TestCase):
 
     def test_sense_level_translations(self):
         self.assertEqual(self.d["w"]["run"], "бежать, запускать")
+        # The same word picked from two sense groups is kept once.
         self.assertEqual(self.d["w"]["book"], "книга")
+
+    def test_translation_language_from_code_field(self):
+        self.assertEqual(self.d["w"]["rain"], "дождь")
 
     def test_sense_level_before_unattached_word_level(self):
         self.assertEqual(self.d["w"]["give"], "давать, поддаваться")
@@ -90,19 +98,46 @@ class BuildDictTest(unittest.TestCase):
     def test_contraction_passes_via_parts(self):
         self.assertEqual(self.d["w"]["don't"], "не")
 
+    def test_contraction_with_rare_part_dropped(self):
+        self.assertNotIn("isn't", self.d["w"])  # "isn" is not in the frequency list
+
     def test_top_limits_frequency_list(self):
         d = build_fixture(top=3)  # the, go, leave
         self.assertEqual(set(d["w"]), {"go", "leave"})
 
 
 class CliTest(unittest.TestCase):
-    def test_writes_compact_json(self):
+    def run_cli(self, dump):
         with tempfile.TemporaryDirectory() as tmp:
             out = os.path.join(tmp, "dict.json")
-            self.assertEqual(build_dict.main([DUMP, "--freq", FREQ, "--out", out]), 0)
+            self.assertEqual(build_dict.main([dump, "--freq", FREQ, "--out", out]), 0)
             with open(out, encoding="utf-8") as fh:
-                d = json.load(fh)
-        self.assertEqual(d, build_fixture())
+                return fh.read()
+
+    def test_writes_compact_json(self):
+        raw = self.run_cli(DUMP)
+        self.assertEqual(json.loads(raw), build_fixture())
+        self.assertNotIn(": ", raw)
+        self.assertNotIn(", \"", raw)
+        self.assertIn("бежать", raw)  # raw Cyrillic, no escapes
+        self.assertEqual(raw, json.dumps(json.loads(raw), ensure_ascii=False, separators=(",", ":"), sort_keys=True))
+
+    def test_reads_gzip_dump(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            gz = os.path.join(tmp, "dump.jsonl.gz")
+            with open(DUMP, "rb") as src, gzip.open(gz, "wb") as dst:
+                shutil.copyfileobj(src, dst)
+            self.assertEqual(json.loads(self.run_cli(gz)), build_fixture())
+
+    def test_reads_dump_from_stdin(self):
+        with open(DUMP, "rb") as fh:
+            stdin = mock.Mock(buffer=io.BytesIO(fh.read()))
+        with mock.patch("sys.stdin", stdin):
+            self.assertEqual(json.loads(self.run_cli("-")), build_fixture())
+
+    def test_malformed_line_reports_line_number(self):
+        with self.assertRaisesRegex(ValueError, "line 2"):
+            build_dict.build(['{"word": "go", "lang_code": "en"}', "{broken"], {"go": 0})
 
 
 if __name__ == "__main__":

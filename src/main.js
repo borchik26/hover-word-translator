@@ -9,8 +9,8 @@ const IS_TOP = window.top === window;
 const state = {
   dict: null,
   dictFailed: false,
-  disabledHosts: GM_getValue('disabledHosts', []),
-  mode: Core.MODES.includes(GM_getValue('overlayMode')) ? GM_getValue('overlayMode') : 'cover',
+  disabledHosts: Core.parseHosts(GM_getValue('disabledHosts')),
+  mode: Core.parseMode(GM_getValue('overlayMode')),
 };
 
 function loadDict() {
@@ -46,19 +46,19 @@ const CSS = `
 }
 `;
 
-let host = null;
+let overlayHost = null;
 let mask = null;
 let bubble = null;
 
 function ensureOverlay() {
-  if (host && host.isConnected) return;
+  if (overlayHost && overlayHost.isConnected) return;
   // A custom tag dodges page rules like `div { display: none }`; inline !important beats `* {…}`.
-  host = document.createElement('hover-translator');
+  overlayHost = document.createElement('hover-translator');
   const hostStyle = [['all', 'initial'], ['position', 'fixed'], ['inset', '0'], ['pointer-events', 'none'],
     ['z-index', '2147483647'], ['display', 'block'], ['visibility', 'visible'], ['opacity', '1']];
-  for (const [prop, value] of hostStyle) host.style.setProperty(prop, value, 'important');
-  host.setAttribute('aria-hidden', 'true');
-  const root = host.attachShadow({ mode: 'closed' });
+  for (const [prop, value] of hostStyle) overlayHost.style.setProperty(prop, value, 'important');
+  overlayHost.setAttribute('aria-hidden', 'true');
+  const root = overlayHost.attachShadow({ mode: 'closed' });
   try {
     const sheet = new CSSStyleSheet();
     sheet.replaceSync(CSS);
@@ -73,7 +73,7 @@ function ensureOverlay() {
   bubble = document.createElement('div');
   bubble.className = 'bubble';
   root.append(mask, bubble);
-  document.documentElement.append(host);
+  document.documentElement.append(overlayHost);
 }
 
 function setBox(el, box) {
@@ -83,38 +83,23 @@ function setBox(el, box) {
   }
 }
 
-function visualViewport() {
-  const vv = window.visualViewport;
-  return vv
-    ? { left: vv.offsetLeft, top: vv.offsetTop, width: vv.width, height: vv.height }
-    : { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight };
-}
-
 function render(hit) {
   ensureOverlay();
   const rect = hit.rects[0]; // phrase wrapped over two lines: cover the first part
   const fontPx = parseFloat(getComputedStyle(hit.node.parentElement).fontSize) || 16;
   bubble.style.setProperty('font-size', `${Math.min(20, Math.max(12, fontPx))}px`);
   bubble.textContent = hit.translation;
-  const vp = visualViewport();
+  const vv = window.visualViewport;
+  const vp = { left: vv.offsetLeft, top: vv.offsetTop, width: vv.width, height: vv.height };
 
-  if (state.mode === 'cover') {
-    mask.style.setProperty('display', 'none');
-    setBox(bubble, { 'min-width': rect.width, 'min-height': rect.height });
-  } else {
-    setBox(bubble, {});
-    if (state.mode === 'blur') {
-      setBox(mask, { left: rect.left, top: rect.top, width: rect.width, height: rect.height });
-      mask.style.setProperty('display', 'block');
-    } else {
-      mask.style.setProperty('display', 'none');
-    }
-  }
+  const cover = state.mode === 'cover';
+  setBox(bubble, cover ? { 'min-width': rect.width, 'min-height': rect.height } : {});
+  setBox(mask, { left: rect.left, top: rect.top, width: rect.width, height: rect.height });
+  mask.style.setProperty('display', state.mode === 'blur' ? 'block' : 'none');
   bubble.style.setProperty('display', 'block');
   const size = bubble.getBoundingClientRect();
-  const above = state.mode !== 'cover';
-  const anchor = above ? { left: rect.left, top: rect.top - 2, bottom: rect.bottom + 2 } : rect;
-  const pos = Core.clampRect(anchor, size, vp, above);
+  const anchor = cover ? rect : { left: rect.left, top: rect.top - 2, bottom: rect.bottom + 2 };
+  const pos = Core.clampRect(anchor, size, vp, !cover);
   bubble.style.setProperty('left', `${pos.left}px`);
   bubble.style.setProperty('top', `${pos.top}px`);
 }
@@ -157,8 +142,6 @@ function hitAt(x, y, target) {
   if (!el || editable(el)) return null;
   const sel = document.getSelection();
   if (sel && !sel.isCollapsed) return null;
-  const langEl = el.closest('[lang]');
-  if (langEl && !Core.langAllowed(langEl.getAttribute('lang'))) return null;
 
   let node;
   let offset;
@@ -174,6 +157,11 @@ function hitAt(x, y, target) {
     offset = range.startOffset;
   }
   if (!node || node.nodeType !== Node.TEXT_NODE || !node.parentElement) return null;
+  // Checked on the text itself: a nested <span lang="de"> may differ from the event target.
+  const parent = node.parentElement;
+  if (editable(parent)) return null;
+  const langEl = parent.closest('[lang]');
+  if (langEl && !Core.langAllowed(langEl.getAttribute('lang'))) return null;
 
   const dict = loadDict();
   if (!dict) return null;
@@ -192,10 +180,7 @@ function probe() {
   if (lastX === null) return;
   const hit = hitAt(lastX, lastY, lastTarget);
   if (!hit) return hide();
-  if (current && current.node === hit.node && current.start === hit.start && current.end === hit.end) {
-    if (!hit.node.isConnected) hide();
-    return;
-  }
+  if (current && current.node === hit.node && current.start === hit.start && current.end === hit.end) return;
   clearTimeout(showTimer);
   current = hit;
   if (visible || performance.now() - lastVisibleAt <= WARM_MS) {
@@ -265,15 +250,13 @@ function renderMenu() {
 }
 
 // The listener also fires in the tab that changed the value, so it is the only re-render path.
-GM_addValueChangeListener('disabledHosts', (_name, _old, value) => {
-  state.disabledHosts = Array.isArray(value) ? value : [];
+function onSettingChanged(name, _old, value) {
+  if (name === 'disabledHosts') state.disabledHosts = Core.parseHosts(value);
+  else state.mode = Core.parseMode(value);
   hide();
   if (IS_TOP) renderMenu();
-});
-GM_addValueChangeListener('overlayMode', (_name, _old, value) => {
-  state.mode = Core.MODES.includes(value) ? value : 'cover';
-  hide();
-  if (IS_TOP) renderMenu();
-});
+}
+GM_addValueChangeListener('disabledHosts', onSettingChanged);
+GM_addValueChangeListener('overlayMode', onSettingChanged);
 
 if (IS_TOP) renderMenu();

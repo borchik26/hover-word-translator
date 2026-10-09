@@ -2,11 +2,14 @@
 const Core = (() => {
   const WINDOW = 64; // chars on each side of the caret fed to the tokenizer
   const EXTEND = 64; // extra chars allowed to finish a word cut by the window
-  const TOKEN_RE = /[A-Za-z]+(?:['-][A-Za-z]+)*/g;
+  // Any letters form a token so "résumé" is never split into ASCII fragments ("sum");
+  // only all-ASCII tokens are looked up.
+  const TOKEN_RE = /\p{L}+(?:['-]\p{L}+)*/gu;
+  const ASCII_TOKEN_RE = /^[A-Za-z'-]+$/;
   const DROP_RE = /[\u00AD\u200B-\u200D\u2060\uFEFF]/; // soft hyphen, zero-width
   const SPACE_RE = /\s/; // includes NBSP
   const EDGE_PUNCT_RE = /^[^A-Za-z0-9@/]+|[^A-Za-z0-9@/]+$/g;
-  const NOT_PROSE_RE = /[0-9@/]|[A-Za-z]\.[A-Za-z]/; // numbers, emails, URLs, domains
+  const NOT_PROSE_RE = /[0-9@]|:\/\/|www\.|[A-Za-z]\.[A-Za-z]/; // numbers, emails, URLs, domains
   const SENTENCE_END_RE = /[.!?]/;
   const OPENERS_RE = /[\s"'“‘«(\[]/;
   const MODES = ['cover', 'blur', 'tooltip'];
@@ -69,11 +72,11 @@ const Core = (() => {
   function scan(text, offset) {
     const toks = tokensOf(text);
     const k = cursorIndex(toks, offset);
-    if (k < 0 || notProse(text, toks[k])) return null;
+    if (k < 0 || !ASCII_TOKEN_RE.test(toks[k].text) || notProse(text, toks[k])) return null;
     return { toks, k };
   }
 
-  /** Token under `offset` in already normalized text, or null. */
+  /** Token under `offset` in already normalized text, or null (plan-listed test seam for the tokenizer). */
   function tokenAt(text, offset) {
     const [ws, we] = windowAround(text, offset);
     const found = scan(text.slice(ws, we), offset - ws);
@@ -107,10 +110,15 @@ const Core = (() => {
     return null;
   }
 
-  function atSentenceStart(text, pos, windowAtTextStart) {
-    let i = pos;
+  /**
+   * Sentence start: after .!? or at the start of a text node that goes on with more words.
+   * A lone word in its own node (`<a>Mark</a>`) is more likely a name than a sentence.
+   */
+  function atSentenceStart(text, toks, k, windowAtTextStart) {
+    let i = toks[k].start;
     while (i > 0 && OPENERS_RE.test(text[i - 1])) i--;
-    return i === 0 ? windowAtTextStart : SENTENCE_END_RE.test(text[i - 1]);
+    if (i > 0) return SENTENCE_END_RE.test(text[i - 1]);
+    return windowAtTextStart && k + 1 < toks.length;
   }
 
   function findWord(dict, tok, offset, sentenceStart) {
@@ -148,12 +156,14 @@ const Core = (() => {
     const n = normalize(text.slice(ws, we));
     let off = n.map.findIndex((i) => i >= offset - ws);
     if (off < 0) off = n.map.length;
+    // Caret on whitespace collapsed away by normalize: not on any word.
+    if (n.map[off] !== offset - ws && SPACE_RE.test(text[offset])) return null;
     const found = scan(n.text, off);
     if (!found) return null;
     const { toks, k } = found;
     const hit =
       findPhrase(dict, n.text, toks, k) ||
-      findWord(dict, toks[k], off, atSentenceStart(n.text, toks[k].start, ws === 0));
+      findWord(dict, toks[k], off, atSentenceStart(n.text, toks, k, ws === 0));
     if (!hit) return null;
     return {
       start: ws + n.map[hit.start],
@@ -194,18 +204,13 @@ const Core = (() => {
    */
   function clampRect(anchor, size, vp, above) {
     let top = anchor.top;
-    let below = false;
     if (above) {
       top = anchor.top - size.height;
-      if (top < vp.top) {
-        top = anchor.bottom;
-        below = true;
-      }
+      if (top < vp.top) top = anchor.bottom;
     }
     return {
       left: clamp(anchor.left, vp.left, size.width, vp.width),
       top: clamp(top, vp.top, size.height, vp.height),
-      below,
     };
   }
 
@@ -216,6 +221,15 @@ const Core = (() => {
 
   function toggleHost(list, host) {
     return list.includes(host) ? list.filter((h) => h !== host) : [...list, host];
+  }
+
+  /** Stored blacklist, tolerant to missing or corrupted values. */
+  function parseHosts(value) {
+    return Array.isArray(value) ? value.filter((h) => typeof h === 'string') : [];
+  }
+
+  function parseMode(value) {
+    return MODES.includes(value) ? value : MODES[0];
   }
 
   function nextMode(mode) {
@@ -242,6 +256,8 @@ const Core = (() => {
     clampRect,
     hostKey,
     toggleHost,
+    parseHosts,
+    parseMode,
     nextMode,
     menuLabels,
   };

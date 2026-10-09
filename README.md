@@ -76,6 +76,9 @@ local URL must never land in `dist/`.
 - Words split by markup (`<b>un</b>believable`), canvas editors and SVG `<text>` are not supported.
 - Top-layer elements (`<dialog>`, fullscreen) are drawn above the overlay.
 - A phrase wrapped over two lines covers only its first line.
+- The script runs in every frame; each frame the mouse visits parses its own copy of the dictionary
+  (~15 ms, ~1.5 MB of JSON), and a dictionary failure inside an iframe shows up only in that frame's
+  console — the menu warning reflects the top frame.
 
 ## Attribution
 

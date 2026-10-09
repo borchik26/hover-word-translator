@@ -11,6 +11,7 @@ const dict = {
     "don't": 'не', john: 'Джон', well: 'хорошо', known: 'известный', state: 'состояние',
     art: 'искусство', beautiful: 'красивый', will: 'воля', Will: 'Уилл', polish: 'полировать',
     Polish: 'польский', it: 'это', world: 'мир', order: 'порядок', as: 'как',
+    dog: 'собака', sum: 'сумма', Mark: 'Марк', mark: 'знак', and: 'и', or: 'или',
   },
   f: { runs: 'run', went: 'go', leaves: 'leave', better: 'good', orphan: 'missing' },
   p: { 'in order to': 'чтобы', 'as well as': 'а также', 'as well': 'тоже', 'order to': 'приказ' },
@@ -25,7 +26,7 @@ function src(text, needle, shift) {
   return r && text.slice(r.start, r.end) + ' → ' + r.translation;
 }
 
-test('plain word, form → lemma, nothing on a space', () => {
+test('plain word, form → lemma; caret right after a word resolves to that word', () => {
   assert.equal(src('The cat runs', 'cat'), 'cat → кошка');
   assert.deepEqual(at('The cat runs', 'runs'), { start: 8, end: 12, source: 'run', translation: 'бежать' });
   // A caret on the space right after a word reports offset === end; the runtime hit-test
@@ -37,13 +38,16 @@ test('caret boundaries: offset === start, offset === end, offset on a space', ()
   const t = 'a cat sat';
   assert.equal(Core.lookup(dict, t, 2).translation, 'кошка'); // start
   assert.equal(Core.lookup(dict, t, 5).translation, 'кошка'); // end: right half of the last letter
-  assert.equal(Core.lookup(dict, 'cat  dog', 4), null); // second space, no token ends here
+  assert.equal(Core.lookup(dict, 'cat  dog', 4), null); // second space collapsed by normalize
+  assert.equal(Core.lookup(dict, 'cat\u00A0\u00A0dog', 4), null);
+  assert.equal(Core.lookup(dict, 'cat  dog', 5).translation, 'собака');
 });
 
 test('apostrophes: straight, curly, possessive', () => {
   assert.equal(src("I don't know", 'don'), "don't → не");
   assert.equal(src('I don’t know', 'don'), 'don’t → не');
   assert.equal(src("John's cat", 'John', 1), 'John → Джон');
+  assert.equal(src('John’s cat', 'John', 1), 'John → Джон');
 });
 
 test('hyphens: part under the caret; em dash splits words', () => {
@@ -55,9 +59,22 @@ test('hyphens: part under the caret; em dash splits words', () => {
 
 test('numbers, emails and URLs are not prose', () => {
   for (const [text, needle] of [['COVID-19 world', 'COVID'], ['an x86 cpu', 'x86'], ['user@mail.com', 'mail'],
-    ['see example.com/run now', 'run'], ['run2 fast', 'run']]) {
+    ['see example.com/run now', 'run'], ['run2 fast', 'run'], ['see https://run now', 'run'],
+    ['go to www.run', 'run']]) {
     assert.equal(at(text, needle), null, text);
   }
+});
+
+test('slash between words is prose', () => {
+  assert.equal(src('cats and/or dogs', 'or'), 'or → или');
+  assert.equal(src('cats and/or dogs', 'and'), 'and → и');
+});
+
+test('accented and non-Latin words are never split into ASCII fragments', () => {
+  assert.equal(at('the résumé', 'sum'), null);
+  assert.equal(at('a naïve cat', 've'), null);
+  assert.equal(src('Привет world', 'world'), 'world → мир');
+  assert.equal(at('Привет world', 'ив'), null);
 });
 
 test('lookup order: phrase > word > lemma, longest phrase first', () => {
@@ -93,6 +110,9 @@ test('capitalized word: lowercase first at sentence start, exact first mid-sente
   assert.equal(at('"Will you?"', 'Will').translation, 'воля');
   assert.equal(at('I met Will today', 'Will').translation, 'Уилл');
   assert.equal(at('the Polish army', 'Polish').translation, 'польский');
+  // A lone word in its own text node (e.g. <a>Mark</a>) is not a sentence start.
+  assert.equal(Core.lookup(dict, 'Mark', 1).translation, 'Марк');
+  assert.equal(Core.lookup(dict, 'Mark it', 1).translation, 'знак');
 });
 
 test('prototype keys never match', () => {
@@ -159,15 +179,17 @@ test('clampRect: four edges, flip below, visual viewport offset', () => {
   const vp = { left: 0, top: 0, width: 800, height: 600 };
   const size = { width: 200, height: 40 };
   const word = (left, top) => ({ left, top, bottom: top + 20 });
-  assert.deepEqual(Core.clampRect(word(100, 300), size, vp, true), { left: 100, top: 260, below: false });
-  assert.deepEqual(Core.clampRect(word(700, 300), size, vp, true), { left: 600, top: 260, below: false }); // right
-  assert.deepEqual(Core.clampRect(word(-30, 300), size, vp, true), { left: 0, top: 260, below: false }); // left
-  assert.deepEqual(Core.clampRect(word(100, 10), size, vp, true), { left: 100, top: 30, below: true }); // top → below
-  assert.deepEqual(Core.clampRect(word(100, 590), size, vp, false), { left: 100, top: 560, below: false }); // bottom
-  assert.deepEqual(Core.clampRect(word(700, 300), size, vp, false), { left: 600, top: 300, below: false }); // cover
+  assert.deepEqual(Core.clampRect(word(100, 300), size, vp, true), { left: 100, top: 260 });
+  assert.deepEqual(Core.clampRect(word(700, 300), size, vp, true), { left: 600, top: 260 }); // right
+  assert.deepEqual(Core.clampRect(word(-30, 300), size, vp, true), { left: 0, top: 260 }); // left
+  assert.deepEqual(Core.clampRect(word(100, 10), size, vp, true), { left: 100, top: 30 }); // top → below
+  assert.deepEqual(Core.clampRect(word(100, 590), size, vp, false), { left: 100, top: 560 }); // bottom
+  assert.deepEqual(Core.clampRect(word(700, 300), size, vp, false), { left: 600, top: 300 }); // cover
   const zoomed = { left: 150, top: 80, width: 400, height: 300 };
-  assert.deepEqual(Core.clampRect(word(100, 100), size, zoomed, true), { left: 150, top: 120, below: true });
-  assert.deepEqual(Core.clampRect(word(600, 300), size, zoomed, true), { left: 350, top: 260, below: false });
+  assert.deepEqual(Core.clampRect(word(100, 100), size, zoomed, true), { left: 150, top: 120 });
+  assert.deepEqual(Core.clampRect(word(600, 300), size, zoomed, true), { left: 350, top: 260 });
+  // Box larger than the viewport is pinned to its top-left corner.
+  assert.deepEqual(Core.clampRect(word(100, 300), { width: 900, height: 700 }, vp, true), { left: 0, top: 0 });
 });
 
 test('hostKey', () => {
@@ -181,6 +203,14 @@ test('toggleHost does not mutate', () => {
   assert.deepEqual(Core.toggleHost(list, 'b.com'), ['a.com', 'b.com']);
   assert.deepEqual(Core.toggleHost(list, 'a.com'), []);
   assert.deepEqual(list, ['a.com']);
+});
+
+test('parseHosts / parseMode tolerate corrupted stored values', () => {
+  assert.deepEqual(Core.parseHosts(['a.com', 'b.com']), ['a.com', 'b.com']);
+  for (const v of [undefined, null, 'a.com', { 0: 'a.com' }, 42]) assert.deepEqual(Core.parseHosts(v), [], String(v));
+  assert.deepEqual(Core.parseHosts(['a.com', 1, null]), ['a.com']);
+  assert.equal(Core.parseMode('blur'), 'blur');
+  for (const v of [undefined, 'bogus', 'constructor', 1]) assert.equal(Core.parseMode(v), 'cover', String(v));
 });
 
 test('nextMode cycles and recovers from unknown values', () => {

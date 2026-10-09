@@ -20,4 +20,6 @@
 {"word": "the", "pos": "pron", "lang": "English", "lang_code": "en", "senses": [{"glosses": ["Obsolete form of they."], "tags": ["form-of", "obsolete"], "form_of": [{"word": "they"}]}]}
 {"word": "give", "pos": "verb", "lang": "English", "lang_code": "en", "translations": [{"lang": "Russian", "code": "ru", "lang_code": "ru", "word": "поддава́ться", "sense": "bend slightly when a force is applied"}], "senses": [{"glosses": ["To transfer possession."], "translations": [{"lang": "Russian", "code": "ru", "lang_code": "ru", "word": "дава́ть", "sense": "transfer the possession"}]}]}
 {"word": "US", "pos": "name", "lang": "English", "lang_code": "en", "translations": [{"lang": "Russian", "code": "ru", "lang_code": "ru", "word": "but see США", "sense": "United States"}, {"lang": "Russian", "code": "ru", "lang_code": "ru", "word": "США", "sense": "United States"}]}
+{"word": "rain", "pos": "noun", "lang": "English", "lang_code": "en", "translations": [{"lang": "Russian", "code": "ru", "word": "дождь", "sense": "water falling"}]}
+{"word": "isn't", "pos": "verb", "lang": "English", "lang_code": "en", "translations": [{"lang": "Russian", "code": "ru", "lang_code": "ru", "word": "не является", "sense": "is not"}]}
 

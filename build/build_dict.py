@@ -25,6 +25,7 @@ MAX_PHRASE_WORDS = 3
 SKIP_FORM_TAGS = {"romanization", "table-tags", "inflection-template"}
 # Rare spellings would hijack frequent words (`the` is an obsolete form of `they`).
 NONSTANDARD_TAGS = {"alternative", "obsolete", "archaic", "dialectal", "nonstandard", "misspelling"}
+FORM_SKIP_TAGS = SKIP_FORM_TAGS | NONSTANDARD_TAGS
 # Same token shape the userscript uses; keys that can never be hovered are dropped.
 TOKEN_RE = re.compile(r"[A-Za-z]+(?:['-][A-Za-z]+)*\Z")
 STRESS_RE = re.compile("[\u0300\u0301]")  # stress marks in ru translations
@@ -65,14 +66,13 @@ def ru_translations(entry: dict) -> List[Tuple[str, str]]:
     Sense-level translations follow sense order (main sense first); word-level
     ones are the tables wiktextract could not attach to a sense, so they rank last.
     """
+    def is_ru(t: dict) -> bool:
+        return (t.get("lang_code") or t.get("code")) == "ru" and bool(t.get("word"))
+
     out = []  # type: List[Tuple[str, str]]
     for i, sense in enumerate(entry.get("senses") or []):
-        for t in sense.get("translations") or []:
-            if (t.get("lang_code") or t.get("code")) == "ru" and t.get("word"):
-                out.append(("s%d" % i, t["word"]))
-    for t in entry.get("translations") or []:
-        if (t.get("lang_code") or t.get("code")) == "ru" and t.get("word"):
-            out.append(("w:" + (t.get("sense") or ""), t["word"]))
+        out.extend(("s%d" % i, t["word"]) for t in sense.get("translations") or [] if is_ru(t))
+    out.extend(("w:" + (t.get("sense") or ""), t["word"]) for t in entry.get("translations") or [] if is_ru(t))
     return out
 
 
@@ -92,6 +92,11 @@ def pick_translation(pairs: List[Tuple[str, str]]) -> str:
     return ", ".join(picked)
 
 
+def pick_all(groups: Dict[str, List[Tuple[str, str]]]) -> Dict[str, str]:
+    picked = {k: pick_translation(v) for k, v in groups.items()}
+    return {k: v for k, v in picked.items() if v}
+
+
 def build(lines: Iterable[str], ranks: Dict[str, int]) -> dict:
     words = {}  # type: Dict[str, List[Tuple[str, str]]]
     phrases = {}  # type: Dict[str, List[Tuple[str, str]]]
@@ -101,7 +106,10 @@ def build(lines: Iterable[str], ranks: Dict[str, int]) -> dict:
         line = line.strip()
         if not line:
             continue
-        entry = json.loads(line)
+        try:
+            entry = json.loads(line)
+        except json.JSONDecodeError as err:
+            raise ValueError("malformed JSON on dump line %d: %s" % (n + 1, err)) from err
         if entry.get("lang_code") != "en":
             continue
         word = entry.get("word") or ""
@@ -128,21 +136,19 @@ def build(lines: Iterable[str], ranks: Dict[str, int]) -> dict:
                     form_candidates.setdefault(word, []).append(f["word"])
         for f in entry.get("forms") or []:
             form = f.get("form") or ""
-            if (SKIP_FORM_TAGS | NONSTANDARD_TAGS).intersection(f.get("tags") or []):
+            if FORM_SKIP_TAGS.intersection(f.get("tags") or []):
                 continue
             if TOKEN_RE.match(form) and word_rank(form, ranks) is not None:
                 form_candidates.setdefault(form, []).append(word)
 
-    w = {k: pick_translation(v) for k, v in words.items()}
-    w = {k: v for k, v in w.items() if v}
-    p = {k: pick_translation(v) for k, v in phrases.items()}
-    p = {k: v for k, v in p.items() if v}
+    w = pick_all(words)
+    p = pick_all(phrases)
 
     f = {}  # type: Dict[str, str]
     for form, lemmas in form_candidates.items():
         if form in w:
             continue
-        known = [lemma for lemma in lemmas if lemma in w and lemma != form]
+        known = [lemma for lemma in lemmas if lemma in w]
         if known:
             # min() keeps the first-seen lemma on equal rank.
             f[form] = min(known, key=lambda lemma: word_rank(lemma, ranks))
