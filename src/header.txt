@@ -1,0 +1,15 @@
+// ==UserScript==
+// @name         Hover Word Translator
+// @namespace    https://github.com/borchik26/hover-word-translator
+// @version      2.0.0
+// @description  Shows the Russian translation of the English word or phrase under the cursor. Dictionary: Wiktionary via kaikki.org (CC BY-SA 4.0), FrequencyWords (CC BY-SA 4.0).
+// @match        *://*/*
+// @run-at       document-idle
+// @resource     dict {{DICT_URL}}
+// @grant        GM_getResourceText
+// @grant        GM_getValue
+// @grant        GM_setValue
+// @grant        GM_registerMenuCommand
+// @grant        GM_unregisterMenuCommand
+// @grant        GM_addValueChangeListener
+// ==/UserScript==

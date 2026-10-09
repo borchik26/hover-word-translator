@@ -265,7 +265,7 @@ old_script.js             # удаляется в последней фазе
 
 ### Phase 2: Core logic + bundler
 
-- **Status:** Not started
+- **Status:** Done
 - **Scope:** Чистые функции в `core.js`: normalize (с картой индексов), tokenAt, lookup,
   validateDict, pointInRects, langAllowed, clampRect, hostKey, toggleHost, nextMode, menuLabels.
   Тесты на `node --test` (синтетический мини-словарь в тесте, реальный `dist/dict.json` не
