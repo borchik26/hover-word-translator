@@ -243,7 +243,7 @@ old_script.js             # удаляется в последней фазе
 
 ### Phase 1: Dictionary build pipeline
 
-- **Status:** Not started
+- **Status:** Done
 - **Scope:** `build_dict.py` потоково собирает `dist/dict.json` (`v`, `w`, `f`, `p`) из kaikki и
   частотного списка. Есть unit-тесты на фикстуре и `.gitignore` для `build/data/`.
 - **Files touched:** `build/build_dict.py`, `build/tests/__init__.py`,
