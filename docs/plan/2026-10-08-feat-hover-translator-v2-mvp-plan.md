@@ -291,7 +291,7 @@ old_script.js             # удаляется в последней фазе
 
 ### Phase 3: Userscript runtime, overlay modes, menu
 
-- **Status:** Not started
+- **Status:** Done
 - **Scope:** `main.js` по разделу «Рантайм»: события, caret API и hit-test, жизненный цикл, три
   режима оверлея в shadow root, ленивый словарь с обработкой ошибок, меню с синхронизацией
   вкладок. Плюс `test/fixture.html` со сценариями A1–A20. Удалить `old_script.js`.

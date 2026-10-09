@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="style-src 'none'; require-trusted-types-for 'script'">
+<title>Hover translator — A12 CSP / Trusted Types</title>
+</head>
+<body>
+<h1>A12 — strict CSP</h1>
+<p>The cat runs in the world. In order to pass, the overlay must be styled.</p>
+<p>Expected: the overlay is styled (shadow root uses adoptedStyleSheets + CSSOM) and the console has no
+Trusted Types or CSP errors from the userscript. Page styles are blocked, so this text is unstyled.</p>
+</body>
+</html>

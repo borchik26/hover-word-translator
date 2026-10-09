@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Hover translator — manual scenarios A1–A20</title>
+<style>
+  body { font: 16px/1.5 Georgia, serif; margin: 0 auto; max-width: 900px; padding: 24px; }
+  section { border-top: 1px solid #ccc; padding: 8px 0 16px; }
+  h2 { font: bold 14px system-ui, sans-serif; color: #555; margin: 0 0 4px; }
+  .expect { font: 13px system-ui, sans-serif; color: #666; }
+  .wide { width: 100%; padding: 24px; background: #f4f4f4; box-sizing: border-box; }
+  .edge { position: fixed; background: #ffe; border: 1px dashed #aa0; padding: 0 4px; }
+  .scroller { height: 120px; overflow: auto; border: 1px solid #aaa; padding: 8px; }
+  .dark { background: #000; color: #eee; padding: 8px; }
+  .light { background: #fff; color: #111; padding: 8px; border: 1px solid #ddd; }
+</style>
+</head>
+<body>
+<h1>Hover translator fixture</h1>
+<p class="expect">Serve over http (<code>python3 -m http.server 8000</code> from the repo root) and open
+<code>http://localhost:8000/test/fixture.html</code>. Each section lists the expected behaviour.</p>
+
+<section id="a1"><h2>A1 — word, form, nothing on a space</h2>
+<p>The cat runs</p>
+<p class="expect">“runs” → translation of “run” after ~200 ms. Nothing over the spaces.</p></section>
+
+<section id="a2"><h2>A2 — empty space and padding</h2>
+<p class="wide">Short line</p>
+<p class="expect">Cursor right of “line” or in the grey padding → nothing.</p></section>
+
+<section id="a3"><h2>A3 — phrases</h2>
+<p>We left early in order to catch the train, as well as the bus.</p>
+<p>It went as well. As expected.</p>
+<p>in <a href="#a3">order</a> to</p>
+<p class="expect">Any word of “in order to” / “as well as” → phrase. “as well. As” → no 3-word phrase.
+Linked “order” → the single word only.</p></section>
+
+<section id="a4"><h2>A4 — forms and case</h2>
+<p>He went home. The leaves fell. This is better. Went away. WENT AWAY.</p>
+<p class="expect">went, leaves, better, Went, WENT → translated via lemma.</p></section>
+
+<section id="a5"><h2>A5 — apostrophes, hyphens, non-prose</h2>
+<p>don't — don’t — John's — well-known — state-of-the-art — COVID-19 — x86 — user@mail.com</p>
+<p class="expect">Words translate; COVID-19, x86 and the email show nothing.</p></section>
+
+<section id="a6"><h2>A6 — lang</h2>
+<p lang="de">die Katze schläft</p>
+<p>Привет world</p>
+<p class="expect">German paragraph → nothing. “world” → translated.</p></section>
+
+<section id="a7"><h2>A7 — form fields</h2>
+<p><input value="hello world"> <textarea>hello world</textarea></p>
+<p contenteditable="true" style="border:1px solid #aaa">hello editable world</p>
+<p class="expect">Never shows inside fields or contenteditable.</p></section>
+
+<section id="a8"><h2>A8 — viewport edges, long translation</h2>
+<span class="edge" style="right:0; top:40%">world</span>
+<span class="edge" style="left:0; top:40%">world</span>
+<span class="edge" style="left:45%; top:0">world</span>
+<p>by the way, a long translation: <span>at least</span>, <span>because of</span>.</p>
+<p class="expect">Fixed yellow words at the right/left/top edges: the overlay stays inside the viewport;
+at the top edge the bubble goes below the word.</p></section>
+
+<section id="a9"><h2>A9 — scrolling</h2>
+<section class="scroller">
+<p>Scroll this box while the overlay is shown on a word.</p>
+<p>The world is wide and the river runs to the sea.</p>
+<p>Every child knows the story of the old man and the sea.</p>
+<p>The night was cold and the people went home early.</p>
+</section>
+<p class="expect">Wheel over a shown overlay (page or box) → hidden, then re-anchored where the cursor rests.</p></section>
+
+<section id="a10"><h2>A10 — leaving the window, selection, Esc</h2>
+<p>Select this sentence by dragging across the world of words.</p>
+<p class="expect">Overlay hides when the cursor leaves the window, while dragging, and on Esc.
+Selection and copy work normally.</p></section>
+
+<section id="a11"><h2>A11 — click-through</h2>
+<p><a href="#a11-clicked" id="a11-link">Click this world link</a> <span id="a11-out"></span></p>
+<p class="expect">Click the link while the overlay covers it → URL hash becomes #a11-clicked.</p></section>
+
+<section id="a12"><h2>A12 — CSP / Trusted Types</h2>
+<p><a href="fixture-csp.html">Open fixture-csp.html</a></p>
+<p class="expect">Styles present, no Trusted Types errors in the console.</p></section>
+
+<section id="a13"><h2>A13 — aggressive page CSS</h2>
+<p><button id="aggr">Toggle aggressive CSS</button> The world must still look normal in the overlay.</p>
+<p class="expect">With <code>* {color:red!important}</code>, <code>div {display:none!important}</code> and
+<code>html &gt; :not(head):not(body) {display:none!important}</code> the overlay is intact.</p></section>
+
+<section id="a14"><h2>A14 — iframe srcdoc</h2>
+<iframe width="600" height="80" srcdoc="<p style='font:16px Georgia'>The cat runs in the world.</p>"></iframe>
+<p class="expect">Works inside the frame.</p></section>
+
+<section id="a15"><h2>A15 — colour schemes</h2>
+<p class="light">The light world.</p>
+<p class="dark">The dark world.</p>
+<p class="expect">Emulate prefers-color-scheme light/dark in DevTools; contrast ≥ 4.5:1 on both pages.</p></section>
+
+<section id="a16"><h2>A16 — broken dictionary</h2>
+<p class="expect">Build with <code>DICT_URL=http://localhost:8000/missing.json node scripts/bundle.mjs</code>,
+reinstall, hover a word → one console warning, menu shows “⚠ Словарь не загружен”, no errors on mousemove.</p></section>
+
+<section id="a17"><h2>A17 — cross-tab toggle</h2>
+<p class="expect">Open this page in two tabs. Disable the host from tab 1’s menu → tab 2 stops showing the
+overlay without reload; menu label updates.</p></section>
+
+<section id="a18"><h2>A18 — heavy page</h2>
+<p><button id="heavy">Insert 1 MB &lt;pre&gt; + 10k nodes</button></p>
+<section id="heavy-out"></section>
+<p class="expect">Performance panel: pointermove handler ≤ 2 ms, no long tasks while idling the mouse.</p></section>
+
+<section id="a19"><h2>A19 — touch</h2>
+<p>Tap this world with touch emulation on.</p>
+<p class="expect">A tap never leaves an overlay behind.</p></section>
+
+<section id="a20"><h2>A20 — top layer (known limitation)</h2>
+<p><button id="dlg">Open dialog</button></p>
+<dialog id="dialog"><p>The world inside a modal dialog.</p><button id="dlg-close">Close</button></dialog>
+<p class="expect">The overlay is drawn under the dialog / fullscreen element — accepted MVP limitation.</p></section>
+
+<script>
+  document.getElementById('aggr').addEventListener('click', () => {
+    const old = document.getElementById('aggr-style');
+    if (old) return old.remove();
+    const style = document.createElement('style');
+    style.id = 'aggr-style';
+    style.textContent = '* { color: red !important; font-size: 22px !important; }'
+      + ' div { display: none !important; }'
+      + ' html > :not(head):not(body) { display: none !important; }';
+    document.head.append(style);
+  });
+  document.getElementById('heavy').addEventListener('click', () => {
+    const out = document.getElementById('heavy-out');
+    const pre = document.createElement('pre');
+    pre.style.cssText = 'max-height: 200px; overflow: auto; white-space: pre-wrap';
+    pre.textContent = 'the cat runs in the world and the people went home '.repeat(20000);
+    const list = document.createElement('p');
+    for (let i = 0; i < 10000; i++) {
+      const s = document.createElement('span');
+      s.textContent = i % 2 ? 'world ' : 'river ';
+      list.append(s);
+    }
+    out.replaceChildren(pre, list);
+  });
+  const dialog = document.getElementById('dialog');
+  document.getElementById('dlg').addEventListener('click', () => dialog.showModal());
+  document.getElementById('dlg-close').addEventListener('click', () => dialog.close());
+</script>
+</body>
+</html>
