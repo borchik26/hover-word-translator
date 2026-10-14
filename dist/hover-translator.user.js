@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Hover Word Translator
 // @namespace    https://github.com/borchik26/hover-word-translator
-// @version      2.0.0
+// @version      2.1.0
 // @description  Shows the Russian translation of the English word or phrase under the cursor. Dictionary: Wiktionary via kaikki.org (CC BY-SA 4.0), FrequencyWords (CC BY-SA 4.0).
 // @match        *://*/*
 // @run-at       document-idle
@@ -31,6 +31,13 @@ const Core = (() => {
   const SENTENCE_END_RE = /[.!?]/;
   const OPENERS_RE = /[\s"'“‘«(\[]/;
   const MODES = ['cover', 'blur', 'tooltip'];
+  const MIN_STEM = 3; // shorter stems and compound parts are noise ("city" → "c")
+  // [ending, replacements]: one inflection, then one derivational suffix.
+  const INFLECTIONS = [['ies', ['y']], ['ied', ['y']], ['es', ['']], ['s', ['']], ['ed', ['', 'e']], ['ing', ['', 'e']]];
+  const SUFFIXES = [
+    ['istic', ['ism', 'ist']], ['able', ['', 'e']], ['ible', ['', 'e']], ['ity', ['', 'e']],
+    ['ness', ['']], ['ment', ['']], ['er', ['', 'e']], ['or', ['', 'e']], ['ic', ['']],
+  ];
   const has = Object.hasOwn;
 
   /** Normalizes typography; map[i] is the index in `text` of normalized char i. */
@@ -139,7 +146,51 @@ const Core = (() => {
     return windowAtTextStart && k + 1 < toks.length;
   }
 
-  function findWord(dict, tok, offset, sentenceStart) {
+  /** Stems of `word` without `ending`: each replacement, plus an undoubled final consonant. */
+  function stemsOf(word, ending, replacements) {
+    if (!word.endsWith(ending)) return [];
+    const base = word.slice(0, -ending.length);
+    const out = replacements.map((r) => base + r);
+    if (/([^aeiou])\1$/.test(base)) out.push(base.slice(0, -1)); // running → run
+    return out.filter((stem) => stem.length >= MIN_STEM);
+  }
+
+  function firstVariant(translation) {
+    return translation.split(', ')[0];
+  }
+
+  /** Word split into two dictionary words, longest left part first: codebase → code + base. */
+  function compound(dict, w) {
+    for (let i = w.length - MIN_STEM; i >= MIN_STEM; i--) {
+      const a = w.slice(0, i);
+      const b = w.slice(i);
+      if (has(dict.w, a) && has(dict.w, b)) {
+        return { source: `${a}+${b}`, translation: `≈ ${firstVariant(dict.w[a])} + ${firstVariant(dict.w[b])}` };
+      }
+    }
+    return null;
+  }
+
+  /** Approximate translation of a word missing from the dictionary, marked with "≈". */
+  function guessWord(dict, word) {
+    const w = word.toLowerCase();
+    const forms = [w, ...INFLECTIONS.flatMap(([end, reps]) => stemsOf(w, end, reps))];
+    const stems = [
+      ...forms.slice(1),
+      ...forms.flatMap((form) => SUFFIXES.flatMap(([end, reps]) => stemsOf(form, end, reps))),
+    ];
+    for (const stem of stems) {
+      const hit = resolve(dict, stem);
+      if (hit) return { source: hit.source, translation: `≈ ${firstVariant(hit.translation)}` };
+    }
+    for (const form of forms) {
+      const hit = compound(dict, form);
+      if (hit) return hit;
+    }
+    return null;
+  }
+
+  function findWord(dict, tok, offset, sentenceStart, guess) {
     const t = tok.text;
     const lower = t.toLowerCase();
     const caps = t.length >= 2 && t === t.toUpperCase();
@@ -153,23 +204,32 @@ const Core = (() => {
     }
     if (/'s$/i.test(t)) {
       const base = { start: tok.start, end: tok.end - 2, text: t.slice(0, -2) };
-      return findWord(dict, base, Math.min(offset, base.end), sentenceStart);
+      return findWord(dict, base, Math.min(offset, base.end), sentenceStart, guess);
     }
     if (t.includes('-')) {
       let start = tok.start;
       for (const part of t.split('-')) {
         const end = start + part.length;
         if (start <= offset && offset <= end) {
-          return findWord(dict, { start, end, text: part }, offset, sentenceStart && start === tok.start);
+          return findWord(dict, { start, end, text: part }, offset, sentenceStart && start === tok.start, guess);
         }
         start = end + 1;
       }
     }
+    // Capitalized mid-sentence words are likely names (Parker ≠ park), short CAPS are acronyms.
+    const guessable = /^[A-Za-z]+$/.test(t) && (caps ? t.length >= 4 : t === lower || sentenceStart);
+    if (guess && guessable) {
+      const hit = guessWord(dict, t);
+      if (hit) return { start: tok.start, end: tok.end, ...hit };
+    }
     return null;
   }
 
-  /** Translation for the word or phrase at `offset` of a raw text node, with raw offsets. */
-  function lookup(dict, text, offset) {
+  /**
+   * Translation for the word or phrase at `offset` of a raw text node, with raw offsets.
+   * `guess`: fall back to a "≈" guess from a stem or compound when the dictionary misses.
+   */
+  function lookup(dict, text, offset, { guess = false } = {}) {
     const [ws, we] = windowAround(text, offset);
     const n = normalize(text.slice(ws, we));
     let off = n.map.findIndex((i) => i >= offset - ws);
@@ -181,7 +241,7 @@ const Core = (() => {
     const { toks, k } = found;
     const hit =
       findPhrase(dict, n.text, toks, k) ||
-      findWord(dict, toks[k], off, atSentenceStart(n.text, toks, k, ws === 0));
+      findWord(dict, toks[k], off, atSentenceStart(n.text, toks, k, ws === 0), guess);
     if (!hit) return null;
     return {
       start: ws + n.map[hit.start],
@@ -218,7 +278,8 @@ const Core = (() => {
   /**
    * Places a box of `size` relative to `anchor` inside the visual viewport `vp`
    * ({ left, top, width, height } in layout-viewport coordinates).
-   * above=false: over the anchor (cover mode); above=true: above it, below when there is no room.
+   * above=false: over the anchor, right edges aligned so a wider box grows left (cover mode);
+   * above=true: above it, below when there is no room.
    */
   function clampRect(anchor, size, vp, above) {
     let top = anchor.top;
@@ -227,7 +288,7 @@ const Core = (() => {
       if (top < vp.top) top = anchor.bottom;
     }
     return {
-      left: clamp(anchor.left, vp.left, size.width, vp.width),
+      left: clamp(above ? anchor.left : anchor.right - size.width, vp.left, size.width, vp.width),
       top: clamp(top, vp.top, size.height, vp.height),
     };
   }
@@ -250,14 +311,20 @@ const Core = (() => {
     return MODES.includes(value) ? value : MODES[0];
   }
 
+  /** Guesses are on unless explicitly switched off. */
+  function parseGuess(value) {
+    return value !== false;
+  }
+
   function nextMode(mode) {
     return MODES[(MODES.indexOf(mode) + 1) % MODES.length];
   }
 
-  function menuLabels({ host, disabled, mode, dictFailed }) {
+  function menuLabels({ host, disabled, mode, guess, dictFailed }) {
     return {
       toggle: `${disabled ? 'Включить' : 'Выключить'} на ${host}`,
       mode: `Режим: ${mode}`,
+      guess: `Догадки: ${guess ? 'вкл' : 'выкл'}`,
       warning: dictFailed ? '⚠ Словарь не загружен' : null,
     };
   }
@@ -276,6 +343,7 @@ const Core = (() => {
     toggleHost,
     parseHosts,
     parseMode,
+    parseGuess,
     nextMode,
     menuLabels,
   };
@@ -295,6 +363,7 @@ const state = {
   dictFailed: false,
   disabledHosts: Core.parseHosts(GM_getValue('disabledHosts')),
   mode: Core.parseMode(GM_getValue('overlayMode')),
+  guess: Core.parseGuess(GM_getValue('guessEnabled')),
 };
 
 function loadDict() {
@@ -449,7 +518,7 @@ function hitAt(x, y, target) {
 
   const dict = loadDict();
   if (!dict) return null;
-  const res = Core.lookup(dict, node.data, offset);
+  const res = Core.lookup(dict, node.data, offset, { guess: state.guess });
   if (!res) return null;
   const range = document.createRange();
   range.setStart(node, res.start);
@@ -522,6 +591,7 @@ function renderMenu() {
     host: HOST,
     disabled: state.disabledHosts.includes(HOST),
     mode: state.mode,
+    guess: state.guess,
     dictFailed: state.dictFailed,
   });
   menuIds = [
@@ -529,6 +599,7 @@ function renderMenu() {
       GM_setValue('disabledHosts', Core.toggleHost(state.disabledHosts, HOST));
     }),
     GM_registerMenuCommand(labels.mode, () => GM_setValue('overlayMode', Core.nextMode(state.mode))),
+    GM_registerMenuCommand(labels.guess, () => GM_setValue('guessEnabled', !state.guess)),
   ];
   if (labels.warning) menuIds.push(GM_registerMenuCommand(labels.warning, () => {}));
 }
@@ -536,12 +607,14 @@ function renderMenu() {
 // The listener also fires in the tab that changed the value, so it is the only re-render path.
 function onSettingChanged(name, _old, value) {
   if (name === 'disabledHosts') state.disabledHosts = Core.parseHosts(value);
-  else state.mode = Core.parseMode(value);
+  else if (name === 'overlayMode') state.mode = Core.parseMode(value);
+  else if (name === 'guessEnabled') state.guess = Core.parseGuess(value);
   hide();
   if (IS_TOP) renderMenu();
 }
 GM_addValueChangeListener('disabledHosts', onSettingChanged);
 GM_addValueChangeListener('overlayMode', onSettingChanged);
+GM_addValueChangeListener('guessEnabled', onSettingChanged);
 
 if (IS_TOP) renderMenu();
 

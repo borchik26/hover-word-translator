@@ -147,7 +147,7 @@ date: 2026-10-14
 
 ### Phase 2: Guesses, menu toggle, right-aligned cover
 
-- **Status:** Not started
+- **Status:** Done
 - **Scope:** разделы 2–5: `guessWord`, флаг в `lookup`/`findWord`, `parseGuess`, `menuLabels`,
   `clampRect`, ветки `onSettingChanged`, пункт меню, версия, фикстура, сборка бандла.
 - **Files touched:** `src/core.js`, `src/main.js`, `src/header.txt`, `test/core.test.mjs`,

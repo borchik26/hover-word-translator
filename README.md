@@ -13,6 +13,8 @@ Menu (top frame):
 
 - **Выключить на {host} / Включить на {host}** — per-site switch, synced across tabs.
 - **Режим: cover / blur / tooltip** — opaque plate over the word, blurred word + bubble, or bubble only.
+- **Догадки: вкл / выкл** — for words missing from the dictionary, show a `≈` guess from the stem
+  (analyzer → analyze, deployable → deploy) or from two dictionary words (codebase → code + base).
 - **⚠ Словарь не загружен** — shown when the `@resource` is missing or broken.
 
 ## Build the dictionary
