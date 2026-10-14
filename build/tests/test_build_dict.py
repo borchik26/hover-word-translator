@@ -51,8 +51,8 @@ class BuildDictTest(unittest.TestCase):
     def test_non_english_entries_ignored(self):
         self.assertNotIn("не то", self.d["w"]["book"])
 
-    def test_words_outside_frequency_list_dropped(self):
-        self.assertNotIn("zymurgy", self.d["w"])
+    def test_words_outside_frequency_list_kept(self):
+        self.assertEqual(self.d["w"]["zymurgy"], "зимургия")
 
     def test_words_without_russian_dropped(self):
         self.assertNotIn("cats", self.d["w"])
@@ -80,8 +80,17 @@ class BuildDictTest(unittest.TestCase):
         self.assertEqual(self.d["w"]["better"], "лучше")
         self.assertNotIn("better", self.d["f"])
 
-    def test_forms_outside_frequency_list_dropped(self):
-        self.assertNotIn("goes", self.d["f"])
+    def test_forms_outside_frequency_list_kept(self):
+        self.assertEqual(self.d["f"]["goes"], "go")
+
+    def test_rare_lemma_loses_to_frequent_one(self):
+        def entry(word, ru):
+            return json.dumps({"word": word, "lang_code": "en", "forms": [{"form": "zorks"}],
+                               "translations": [{"lang_code": "ru", "word": ru}]})
+        lines = [entry("zork", "зорк"), entry("blip", "блип")]
+        self.assertEqual(build_dict.build(lines, {"blip": 0})["f"]["zorks"], "blip")
+        # Neither lemma is ranked: the first seen wins instead of crashing on None.
+        self.assertEqual(build_dict.build(lines, {})["f"]["zorks"], "zork")
 
     def test_case_collision_keeps_both(self):
         self.assertEqual(self.d["w"]["polish"], "полировать")
@@ -98,12 +107,13 @@ class BuildDictTest(unittest.TestCase):
     def test_contraction_passes_via_parts(self):
         self.assertEqual(self.d["w"]["don't"], "не")
 
-    def test_contraction_with_rare_part_dropped(self):
-        self.assertNotIn("isn't", self.d["w"])  # "isn" is not in the frequency list
+    def test_contraction_with_rare_part_kept(self):
+        self.assertEqual(self.d["w"]["isn't"], "не является")
 
-    def test_top_limits_frequency_list(self):
+    def test_top_limits_phrases_only(self):
         d = build_fixture(top=3)  # the, go, leave
-        self.assertEqual(set(d["w"]), {"go", "leave"})
+        self.assertEqual(d["p"], {})
+        self.assertEqual(d["w"], self.d["w"])
 
 
 class CliTest(unittest.TestCase):

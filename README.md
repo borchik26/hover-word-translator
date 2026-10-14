@@ -6,7 +6,7 @@ offline and ships via `@resource`.
 
 ## Install
 
-Install `dist/hover-translator.user.js` in Tampermonkey. The dictionary (`dist/dict.json`, ~1.6 MB) is
+Install `dist/hover-translator.user.js` in Tampermonkey. The dictionary (`dist/dict.json`, ~3.3 MB) is
 downloaded by Tampermonkey from GitHub raw and refreshed when `@version` changes.
 
 Menu (top frame):
@@ -32,7 +32,8 @@ python3 build/build_dict.py build/data/kaikki.jsonl --freq build/data/en_50k.txt
 ```
 
 The 3 GB dump can also be streamed without saving it: pass `-` as the dump path and pipe `curl` into
-the script. `--top N` limits the frequency list. Bump `@version` in `src/header.txt` after every
+the script. The frequency list only filters phrases and picks the most frequent lemma
+of an ambiguous form; `--top N` limits it. Bump `@version` in `src/header.txt` after every
 dictionary change.
 
 ## Develop
