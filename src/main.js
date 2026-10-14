@@ -11,6 +11,7 @@ const state = {
   dictFailed: false,
   disabledHosts: Core.parseHosts(GM_getValue('disabledHosts')),
   mode: Core.parseMode(GM_getValue('overlayMode')),
+  guess: Core.parseGuess(GM_getValue('guessEnabled')),
 };
 
 function loadDict() {
@@ -165,7 +166,7 @@ function hitAt(x, y, target) {
 
   const dict = loadDict();
   if (!dict) return null;
-  const res = Core.lookup(dict, node.data, offset);
+  const res = Core.lookup(dict, node.data, offset, { guess: state.guess });
   if (!res) return null;
   const range = document.createRange();
   range.setStart(node, res.start);
@@ -238,6 +239,7 @@ function renderMenu() {
     host: HOST,
     disabled: state.disabledHosts.includes(HOST),
     mode: state.mode,
+    guess: state.guess,
     dictFailed: state.dictFailed,
   });
   menuIds = [
@@ -245,6 +247,7 @@ function renderMenu() {
       GM_setValue('disabledHosts', Core.toggleHost(state.disabledHosts, HOST));
     }),
     GM_registerMenuCommand(labels.mode, () => GM_setValue('overlayMode', Core.nextMode(state.mode))),
+    GM_registerMenuCommand(labels.guess, () => GM_setValue('guessEnabled', !state.guess)),
   ];
   if (labels.warning) menuIds.push(GM_registerMenuCommand(labels.warning, () => {}));
 }
@@ -252,11 +255,13 @@ function renderMenu() {
 // The listener also fires in the tab that changed the value, so it is the only re-render path.
 function onSettingChanged(name, _old, value) {
   if (name === 'disabledHosts') state.disabledHosts = Core.parseHosts(value);
-  else state.mode = Core.parseMode(value);
+  else if (name === 'overlayMode') state.mode = Core.parseMode(value);
+  else if (name === 'guessEnabled') state.guess = Core.parseGuess(value);
   hide();
   if (IS_TOP) renderMenu();
 }
 GM_addValueChangeListener('disabledHosts', onSettingChanged);
 GM_addValueChangeListener('overlayMode', onSettingChanged);
+GM_addValueChangeListener('guessEnabled', onSettingChanged);
 
 if (IS_TOP) renderMenu();

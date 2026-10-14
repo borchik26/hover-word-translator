@@ -12,8 +12,11 @@ const dict = {
     art: 'искусство', beautiful: 'красивый', will: 'воля', Will: 'Уилл', polish: 'полировать',
     Polish: 'польский', it: 'это', world: 'мир', order: 'порядок', as: 'как',
     dog: 'собака', sum: 'сумма', Mark: 'Марк', mark: 'знак', and: 'и', or: 'или',
+    analyze: 'анализировать', deploy: 'развёртывать, раскрываться', determinism: 'детерминизм',
+    functional: 'функциональный', code: 'код, кодекс', base: 'база', park: 'парк', ham: 'ветчина',
+    cloud: 'облако', interface: 'интерфейс', use: 'использовать', ab: 'аб',
   },
-  f: { runs: 'run', went: 'go', leaves: 'leave', better: 'good', orphan: 'missing' },
+  f: { runs: 'run', went: 'go', leaves: 'leave', better: 'good', orphan: 'missing', interfaces: 'interface' },
   p: { 'in order to': 'чтобы', 'as well as': 'а также', 'as well': 'тоже', 'order to': 'приказ' },
 };
 
@@ -115,6 +118,55 @@ test('capitalized word: lowercase first at sentence start, exact first mid-sente
   assert.equal(Core.lookup(dict, 'Mark it', 1).translation, 'знак');
 });
 
+/** Like `src`, with guesses switched on. */
+function guess(text, needle, shift = 0) {
+  const r = Core.lookup(dict, text, text.indexOf(needle) + shift, { guess: true });
+  return r && text.slice(r.start, r.end) + ' → ' + r.translation;
+}
+
+test('guesses: derivational suffix → first variant of the stem', () => {
+  assert.equal(guess('the analyzer runs', 'analyzer'), 'analyzer → ≈ анализировать');
+  assert.equal(guess('a deployable app', 'deployable'), 'deployable → ≈ развёртывать');
+  assert.equal(guess('is deterministic here', 'deterministic'), 'deterministic → ≈ детерминизм');
+  assert.equal(guess('more functionality', 'functionality'), 'functionality → ≈ функциональный');
+});
+
+test('guesses: one inflection, then one suffix', () => {
+  assert.equal(guess('two analyzers', 'analyzers'), 'analyzers → ≈ анализировать');
+  assert.equal(guess('now deploying', 'deploying'), 'deploying → ≈ развёртывать');
+  assert.equal(guess('reused code', 'reused'), null); // prefixes are not stripped
+  assert.equal(guess('the hammer', 'hammer'), 'hammer → ≈ ветчина'); // undoubled stem, a known false friend
+});
+
+test('guesses: compound of two dictionary words, parts of 3+ letters', () => {
+  assert.equal(guess('the codebase is', 'codebase'), 'codebase → ≈ код + база');
+  assert.equal(guess('the abcode is', 'abcode'), null); // "ab" is too short to be a part
+});
+
+test('guesses: exact words never guess; possessive and hyphen parts do', () => {
+  assert.equal(guess('the cat', 'cat'), 'cat → кошка');
+  assert.equal(guess('new interfaces', 'interfaces'), 'interfaces → интерфейс');
+  assert.equal(guess("the analyzer's output", 'analyzer'), 'analyzer → ≈ анализировать');
+  assert.equal(guess('a cloud-deployable app', 'deployable'), 'deployable → ≈ развёртывать');
+});
+
+test('guesses: off by default and when disabled', () => {
+  assert.equal(src('the analyzer runs', 'analyzer'), null);
+  const text = 'the analyzer runs';
+  assert.equal(Core.lookup(dict, text, 5, { guess: false }), null);
+});
+
+test('guesses: capitalized names mid-sentence and short CAPS are skipped', () => {
+  assert.equal(guess('we met Parker today', 'Parker'), null);
+  assert.equal(guess('Parker went home.', 'Parker'), 'Parker → ≈ парк'); // sentence start
+  assert.equal(guess('the ANALYZER runs', 'ANALYZER'), 'ANALYZER → ≈ анализировать');
+  assert.equal(guess('the ABS runs', 'ABS'), null);
+});
+
+test('guesses: stems shorter than 3 letters are dropped', () => {
+  assert.equal(guess('the aber runs', 'aber'), null); // "ab" + -er
+});
+
 test('prototype keys never match', () => {
   for (const w of ['constructor', 'toString', 'valueOf', '__proto__', 'hasOwnProperty']) {
     assert.equal(at(`a ${w} b`, w), null, w);
@@ -178,13 +230,17 @@ test('langAllowed', () => {
 test('clampRect: four edges, flip below, visual viewport offset', () => {
   const vp = { left: 0, top: 0, width: 800, height: 600 };
   const size = { width: 200, height: 40 };
-  const word = (left, top) => ({ left, top, bottom: top + 20 });
+  const word = (left, top) => ({ left, top, right: left + 50, bottom: top + 20 });
   assert.deepEqual(Core.clampRect(word(100, 300), size, vp, true), { left: 100, top: 260 });
   assert.deepEqual(Core.clampRect(word(700, 300), size, vp, true), { left: 600, top: 260 }); // right
   assert.deepEqual(Core.clampRect(word(-30, 300), size, vp, true), { left: 0, top: 260 }); // left
   assert.deepEqual(Core.clampRect(word(100, 10), size, vp, true), { left: 100, top: 30 }); // top → below
-  assert.deepEqual(Core.clampRect(word(100, 590), size, vp, false), { left: 100, top: 560 }); // bottom
-  assert.deepEqual(Core.clampRect(word(700, 300), size, vp, false), { left: 600, top: 300 }); // cover
+  // Cover: right edges aligned, a box wider than the word grows left.
+  assert.deepEqual(Core.clampRect(word(300, 300), size, vp, false), { left: 150, top: 300 });
+  assert.deepEqual(Core.clampRect(word(300, 300), { width: 50, height: 20 }, vp, false), { left: 300, top: 300 });
+  assert.deepEqual(Core.clampRect(word(300, 590), size, vp, false), { left: 150, top: 560 }); // bottom
+  assert.deepEqual(Core.clampRect(word(750, 300), size, vp, false), { left: 600, top: 300 }); // right
+  assert.deepEqual(Core.clampRect(word(10, 300), size, vp, false), { left: 0, top: 300 }); // left: shifted right
   const zoomed = { left: 150, top: 80, width: 400, height: 300 };
   assert.deepEqual(Core.clampRect(word(100, 100), size, zoomed, true), { left: 150, top: 120 });
   assert.deepEqual(Core.clampRect(word(600, 300), size, zoomed, true), { left: 350, top: 260 });
@@ -211,6 +267,8 @@ test('parseHosts / parseMode tolerate corrupted stored values', () => {
   assert.deepEqual(Core.parseHosts(['a.com', 1, null]), ['a.com']);
   assert.equal(Core.parseMode('blur'), 'blur');
   for (const v of [undefined, 'bogus', 'constructor', 1]) assert.equal(Core.parseMode(v), 'cover', String(v));
+  assert.equal(Core.parseGuess(false), false);
+  for (const v of [undefined, true, null, 'false', 0]) assert.equal(Core.parseGuess(v), true, String(v));
 });
 
 test('nextMode cycles and recovers from unknown values', () => {
@@ -221,8 +279,8 @@ test('nextMode cycles and recovers from unknown values', () => {
 });
 
 test('menuLabels', () => {
-  assert.deepEqual(Core.menuLabels({ host: 'a.com', disabled: false, mode: 'blur', dictFailed: false }),
-    { toggle: 'Выключить на a.com', mode: 'Режим: blur', warning: null });
-  assert.deepEqual(Core.menuLabels({ host: 'a.com', disabled: true, mode: 'cover', dictFailed: true }),
-    { toggle: 'Включить на a.com', mode: 'Режим: cover', warning: '⚠ Словарь не загружен' });
+  assert.deepEqual(Core.menuLabels({ host: 'a.com', disabled: false, mode: 'blur', guess: true, dictFailed: false }),
+    { toggle: 'Выключить на a.com', mode: 'Режим: blur', guess: 'Догадки: вкл', warning: null });
+  assert.deepEqual(Core.menuLabels({ host: 'a.com', disabled: true, mode: 'cover', guess: false, dictFailed: true }),
+    { toggle: 'Включить на a.com', mode: 'Режим: cover', guess: 'Догадки: выкл', warning: '⚠ Словарь не загружен' });
 });

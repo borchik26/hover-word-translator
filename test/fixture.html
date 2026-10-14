@@ -59,7 +59,8 @@ Linked “order” → the single word only.</p></section>
 <span class="edge" style="left:45%; top:0">world</span>
 <p>by the way, a long translation: <span>at least</span>, <span>because of</span>.</p>
 <p class="expect">Fixed yellow words at the right/left/top edges: the overlay stays inside the viewport;
-at the top edge the bubble goes below the word.</p></section>
+at the top edge the bubble goes below the word. Cover: the plate's right edge matches the word's right
+edge and a long translation grows left over the previous words, never over the next one.</p></section>
 
 <section id="a9"><h2>A9 — scrolling</h2>
 <section class="scroller">
@@ -118,6 +119,13 @@ overlay without reload; menu label updates.</p></section>
 <p><button id="dlg">Open dialog</button></p>
 <dialog id="dialog"><p>The world inside a modal dialog.</p><button id="dlg-close">Close</button></dialog>
 <p class="expect">The overlay is drawn under the dialog / fullscreen element — accepted MVP limitation.</p></section>
+
+<section id="a21"><h2>A21 — technical words and guesses</h2>
+<p>The endpoints expose interfaces; the code was reused despite its shortcomings.</p>
+<p>An analyzer makes the deployable codebase deterministic. Not a guess: Parker.</p>
+<p class="expect">First line: exact translations without “≈”. Second line: analyzer, deployable, codebase,
+deterministic show “≈ …”; Parker (a name mid-sentence) shows nothing. Menu “Догадки: вкл” → “выкл”: the
+“≈” words stop translating, the overlay mode is unchanged, a second tab follows without reload.</p></section>
 
 <script>
   document.getElementById('aggr').addEventListener('click', () => {

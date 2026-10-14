@@ -7,8 +7,8 @@ Usage:
 DUMP may be a path, a .gz path, or "-" for stdin, so the 3 GB dump can be
 streamed: curl -sS <kaikki url> | python3 build/build_dict.py - --freq ...
 
-Python 3.9, stdlib only. The dump is read line by line; only entries whose
-words pass the frequency filter are kept in memory.
+Python 3.9, stdlib only. The dump is read line by line; only translations and
+form links are kept in memory. The frequency list filters phrases and ranks lemmas.
 """
 
 import argparse
@@ -58,6 +58,11 @@ def word_rank(word: str, ranks: Dict[str, int]) -> Optional[int]:
         if all(p in ranks for p in parts):
             return max(ranks[p] for p in parts)
     return None
+
+
+def lemma_rank(word: str, ranks: Dict[str, int]) -> float:
+    rank = word_rank(word, ranks)
+    return float("inf") if rank is None else rank
 
 
 def ru_translations(entry: dict) -> List[Tuple[str, str]]:
@@ -116,7 +121,10 @@ def build(lines: Iterable[str], ranks: Dict[str, int]) -> dict:
         tokens = word.split()
         if not tokens or len(tokens) > MAX_PHRASE_WORDS:
             continue
-        if not all(TOKEN_RE.match(t) and word_rank(t, ranks) is not None for t in tokens):
+        if not all(TOKEN_RE.match(t) for t in tokens):
+            continue
+        # Only phrases need frequent words: single words and forms are kept for any vocabulary.
+        if len(tokens) > 1 and not all(word_rank(t, ranks) is not None for t in tokens):
             continue
         # Entry index keeps sense groups of different entries apart.
         pairs = [("%d:%s" % (n, g), w) for g, w in ru_translations(entry)]
@@ -138,7 +146,7 @@ def build(lines: Iterable[str], ranks: Dict[str, int]) -> dict:
             form = f.get("form") or ""
             if FORM_SKIP_TAGS.intersection(f.get("tags") or []):
                 continue
-            if TOKEN_RE.match(form) and word_rank(form, ranks) is not None:
+            if TOKEN_RE.match(form):
                 form_candidates.setdefault(form, []).append(word)
 
     w = pick_all(words)
@@ -150,8 +158,8 @@ def build(lines: Iterable[str], ranks: Dict[str, int]) -> dict:
             continue
         known = [lemma for lemma in lemmas if lemma in w]
         if known:
-            # min() keeps the first-seen lemma on equal rank.
-            f[form] = min(known, key=lambda lemma: word_rank(lemma, ranks))
+            # min() keeps the first-seen lemma on equal rank; rare lemmas rank last.
+            f[form] = min(known, key=lambda lemma: lemma_rank(lemma, ranks))
 
     return {"v": FORMAT_VERSION, "w": w, "f": f, "p": p}
 
@@ -167,9 +175,9 @@ def open_dump(path: str):
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("dump", help="kaikki JSONL (.jsonl, .jsonl.gz or - for stdin)")
-    parser.add_argument("--freq", required=True, help="FrequencyWords list (word count)")
+    parser.add_argument("--freq", required=True, help="FrequencyWords list (word count): filters phrases, ranks lemmas")
     parser.add_argument("--out", required=True, help="output dict.json")
-    parser.add_argument("--top", type=int, default=None, help="use only the top N frequency words")
+    parser.add_argument("--top", type=int, default=None, help="use only the top N frequency words (phrases only)")
     args = parser.parse_args(argv)
 
     with open(args.freq, encoding="utf-8") as fh:
