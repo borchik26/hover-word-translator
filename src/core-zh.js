@@ -1,0 +1,258 @@
+// Pure logic for Chinese-Russian hover translation: no DOM, no GM_* APIs.
+// Implements CJK tokenization, bidirectional maximum matching, pinyin diacritics,
+// dictionary-entry formatting and dictionary validation.
+const CoreZh = (() => {
+  const MODES = ['cover', 'blur', 'tooltip'];
+  const SEGMENT_MODES = ['matching', 'jieba', 'hybrid'];
+  const DICT_SOURCES = ['bkrs', 'cedict'];
+  const MAX_WIN = 8; // symbols on each side of caret for BiMM window
+  const RARE_CJK_RE = /[㐀-䶿㐀-䶿豈-﫿㐀-䶿豈-﫿぀-ヿ]/;
+  const CJK_RE = /[㐀-䶿一-鿿豈-﫿぀-ヿ]/;
+
+  // Numeric pinyin tone table.
+  const TONE_MAP = {
+    a: ['ā', 'á', 'ǎ', 'à'],
+    e: ['ē', 'é', 'ě', 'è'],
+    i: ['ī', 'í', 'ǐ', 'ì'],
+    o: ['ō', 'ó', 'ǒ', 'ò'],
+    u: ['ū', 'ú', 'ǔ', 'ù'],
+    v: ['ǖ', 'ǘ', 'ǚ', 'ǜ'],
+  };
+  const TONE_MARKS = ['ā', 'á', 'ǎ', 'à', 'ē', 'é', 'ě', 'è', 'ī', 'í', 'ǐ', 'ì', 'ō', 'ó', 'ǒ', 'ò', 'ū', 'ú', 'ǔ', 'ù', 'ǖ', 'ǘ', 'ǚ', 'ǜ'];
+
+  function isCjk(ch) {
+    return CJK_RE.test(ch);
+  }
+
+  function isPlainObject(value) {
+    return value !== null && typeof value === 'object' && !Array.isArray(value);
+  }
+
+  /**
+   * Converts one numeric pinyin syllable (e.g. "hao3", "Zhong1", "nv3", "er2") to
+   * diacritic form ("hǎo", "Zhōng", "nǚ", "ér"). Neutral tone (0/5/absent) leaves vowels bare.
+   * Rules: 'a' or 'e' carry the mark; 'ou' puts it on 'o'; otherwise the last vowel.
+   */
+  function pinyinDiacritic(syllable) {
+    const m = /^([A-Za-züÜ]+)([1-5])$/.exec(syllable.trim());
+    const base = m ? m[1] : syllable.trim();
+    const tone = m ? +m[2] : 0;
+    if (tone < 1 || tone > 4) return base.replace(/v/g, 'ü').replace(/V/g, 'Ü');
+    const lower = base.toLowerCase();
+    let idx = -1;
+    if (lower.includes('a')) idx = lower.indexOf('a');
+    else if (lower.includes('e')) idx = lower.indexOf('e');
+    else {
+      const ou = lower.indexOf('ou');
+      if (ou !== -1) idx = ou;
+      else {
+        for (let i = lower.length - 1; i >= 0; i--) {
+          if ('iouuv'.includes(lower[i])) { idx = i; break; }
+        }
+      }
+    }
+    const ch = lower[idx];
+    const accented = ch === 'v' ? TONE_MAP.v[tone - 1] : TONE_MAP[ch][tone - 1];
+    const diacritic = base.slice(0, idx) + accented + base.slice(idx + 1);
+    return diacritic.replace(/v/g, 'ü').replace(/V/g, 'Ü');
+  }
+
+  function isToneMarked(ch) {
+    return TONE_MARKS.includes(ch);
+  }
+
+  /** Splits a pinyin string ("Zhong1 guo2" / "ni3hao3") into diacritic syllables. */
+  function pinyinToDiacritic(pinyin) {
+    return String(pinyin || '')
+      .split(/\s+/)
+      .filter(Boolean)
+      .map(pinyinDiacritic)
+      .join(' ');
+  }
+
+  /** CJK spans in `text` as [{start, end}] over raw indices. */
+  function cjkSpans(text) {
+    const spans = [];
+    const re = new RegExp(CJK_RE.source, 'g');
+    let m;
+    while ((m = re.exec(text)) !== null) spans.push({ start: m.index, end: m.index + m[0].length });
+    return spans;
+  }
+
+  /** Position of the char under the caret inside a CJK span, or null when the caret is off-CJK. */
+  function cjkIndexAt(text, offset) {
+    const idx = Math.max(0, Math.min(offset, text.length));
+    const pos = idx > 0 && isCjk(text[idx - 1]) && (idx >= text.length || !isCjk(text[idx])) ? idx - 1 : idx;
+    if (pos < text.length && isCjk(text[pos])) return pos;
+    if (idx > 0 && idx - 1 < text.length && isCjk(text[idx - 1])) return idx - 1;
+    return null;
+  }
+
+  /**
+   * Forward / reverse maximum matching over dict.w within a window around the caret.
+   * Favors the longest entry containing the caret; ties break on length.
+   */
+  function bidirectionalMatch(text, pos, dict) {
+    const words = dict.w;
+    let best = null;
+    for (let left = 0; left < MAX_WIN && pos - left >= 0 && isCjk(text[pos - left]); left++) {
+      const maxRight = Math.min(MAX_WIN, text.length - (pos - left));
+      for (let right = 1; right <= maxRight; right++) {
+        const start = pos - left;
+        const end = start + left + right;
+        const candidate = text.slice(start, end);
+        if (!Object.prototype.hasOwnProperty.call(words, candidate)) continue;
+        const containsCaret = pos >= start && pos < end;
+        const length = end - start;
+        const better = !best
+          || (containsCaret && !best.containsCaret)
+          || (containsCaret === best.containsCaret && length > best.length);
+        if (better) best = { candidate, start, end, length, containsCaret };
+      }
+    }
+    if (!best) {
+      const single = text[pos];
+      if (!isCjk(single) || !Object.prototype.hasOwnProperty.call(words, single)) return null;
+      return { candidate: single, start: pos, end: pos + 1, length: 1, containsCaret: true };
+    }
+    return best;
+  }
+
+  function articleText(entry) {
+    if (!isPlainObject(entry)) return '';
+    const senses = Array.isArray(entry.t) ? entry.t : entry.t ? [entry.t] : [];
+    const parts = [];
+    if (entry.p) parts.push(pinyinToDiacritic(entry.p));
+    parts.push(senses.join('; '));
+    if (entry.pos) parts.push(`(${entry.pos})`);
+    return parts.filter(Boolean).join(' — ');
+  }
+
+  function lookup(dict, text, offset, opts) {
+    if (!validateDict(dict)) return null;
+    const pos = cjkIndexAt(text, offset);
+    if (pos === null) return null;
+    const match = bidirectionalMatch(text, pos, dict);
+    if (!match) return null;
+    const entry = dict.w[match.candidate];
+    const translation = articleText(entry);
+    if (!translation) return null;
+    return { start: match.start, end: match.end, translation, word: match.candidate, entry };
+  }
+
+  function validateDict(dict) {
+    return isPlainObject(dict) && dict.v === 1 && dict.lang === 'zh-ru' && isPlainObject(dict.w);
+  }
+
+  function pointInRects(x, y, rects) {
+    for (const r of rects) {
+      if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return true;
+    }
+    return false;
+  }
+
+  /** Explicit `lang` value of the closest element: empty/missing, Chinese or English is allowed. */
+  function langAllowed(value) {
+    return !value || /^(zh|en)(-|$)/i.test(value);
+  }
+
+  function clamp(value, min, size, limit) {
+    return Math.max(min, Math.min(value, min + limit - size));
+  }
+
+  function clampRect(anchor, size, vp, above) {
+    let top = anchor.top;
+    if (above) {
+      top = anchor.top - size.height;
+      if (top < vp.top) top = anchor.bottom;
+    }
+    return {
+      left: clamp(above ? anchor.left : anchor.right - size.width, vp.left, size.width, vp.width),
+      top: clamp(top, vp.top, size.height, vp.height),
+    };
+  }
+
+  function hostKey(loc) {
+    return loc.protocol === 'file:' || !loc.hostname ? loc.protocol : loc.hostname;
+  }
+
+  function toggleHost(list, host) {
+    return list.includes(host) ? list.filter((h) => h !== host) : [...list, host];
+  }
+
+  function parseHosts(value) {
+    return Array.isArray(value) ? value.filter((h) => typeof h === 'string') : [];
+  }
+
+  function parseMode(value) {
+    return MODES.includes(value) ? value : MODES[0];
+  }
+
+  function nextMode(mode) {
+    return MODES[(MODES.indexOf(mode) + 1) % MODES.length];
+  }
+
+  const DEFAULT_SETTINGS = {
+    dictSource: 'bkrs',
+    segmentation: 'hybrid',
+    overlayMode: 'cover',
+    showPinyin: true,
+    showTraditional: true,
+    showPos: true,
+    showMultipleSenses: true,
+    disabledHosts: [],
+  };
+
+  function parseSettings(value) {
+    const s = isPlainObject(value) ? value : {};
+    return {
+      dictSource: DICT_SOURCES.includes(s.dictSource) ? s.dictSource : DEFAULT_SETTINGS.dictSource,
+      segmentation: SEGMENT_MODES.includes(s.segmentation) ? s.segmentation : DEFAULT_SETTINGS.segmentation,
+      overlayMode: MODES.includes(s.overlayMode) ? s.overlayMode : DEFAULT_SETTINGS.overlayMode,
+      showPinyin: s.showPinyin !== false,
+      showTraditional: s.showTraditional !== false,
+      showPos: s.showPos !== false,
+      showMultipleSenses: s.showMultipleSenses !== false,
+      disabledHosts: parseHosts(s.disabledHosts),
+    };
+  }
+
+  function menuLabels({ host, disabled, mode, dictFailed }) {
+    return {
+      toggle: `${disabled ? 'Включить' : 'Выключить'} на ${host}`,
+      mode: `Режим: ${mode}`,
+      guess: null,
+      warning: dictFailed ? '⚠ Словарь не загружен' : null,
+    };
+  }
+
+  return {
+    MODES,
+    SEGMENT_MODES,
+    DICT_SOURCES,
+    MAX_WIN,
+    DEFAULT_SETTINGS,
+    isCjk,
+    isToneMarked,
+    cjkSpans,
+    cjkIndexAt,
+    pinyinDiacritic,
+    pinyinToDiacritic,
+    bidirectionalMatch,
+    articleText,
+    lookup,
+    validateDict,
+    pointInRects,
+    langAllowed,
+    clampRect,
+    hostKey,
+    toggleHost,
+    parseHosts,
+    parseMode,
+    parseSettings,
+    nextMode,
+    menuLabels,
+  };
+})();
+
+if (typeof module !== 'undefined') module.exports = CoreZh;
