@@ -63,28 +63,35 @@ const CoreZh = (() => {
 
   /** Splits a pinyin string ("Zhong1 guo2" / "ni3hao3") into diacritic syllables. */
   function pinyinToDiacritic(pinyin) {
+    // Split glued syllables on tone digits, then honour whitespace as the primary separator.
     return String(pinyin || '')
+      .trim()
       .split(/\s+/)
-      .filter(Boolean)
+      .flatMap((chunk) => chunk.match(/[A-Za-züÜ]+[1-5]?/g) || [])
       .map(pinyinDiacritic)
       .join(' ');
   }
 
-  /** CJK spans in `text` as [{start, end}] over raw indices. */
+  /** CJK spans in `text` as [{start, end}] over raw indices; runs of adjacent CJK merge. */
   function cjkSpans(text) {
     const spans = [];
     const re = new RegExp(CJK_RE.source, 'g');
     let m;
-    while ((m = re.exec(text)) !== null) spans.push({ start: m.index, end: m.index + m[0].length });
+    while ((m = re.exec(text)) !== null) {
+      const start = m.index;
+      const end = m.index + m[0].length;
+      const last = spans[spans.length - 1];
+      if (last && last.end === start) last.end = end;
+      else spans.push({ start, end });
+    }
     return spans;
   }
 
   /** Position of the char under the caret inside a CJK span, or null when the caret is off-CJK. */
   function cjkIndexAt(text, offset) {
     const idx = Math.max(0, Math.min(offset, text.length));
-    const pos = idx > 0 && isCjk(text[idx - 1]) && (idx >= text.length || !isCjk(text[idx])) ? idx - 1 : idx;
-    if (pos < text.length && isCjk(text[pos])) return pos;
-    if (idx > 0 && idx - 1 < text.length && isCjk(text[idx - 1])) return idx - 1;
+    if (idx < text.length && isCjk(text[idx])) return idx; // caret directly on a CJK char
+    if (idx === text.length && idx > 0 && isCjk(text[idx - 1])) return idx - 1; // caret at end of CJK run
     return null;
   }
 
@@ -96,7 +103,9 @@ const CoreZh = (() => {
     const words = dict.w;
     let best = null;
     for (let left = 0; left < MAX_WIN && pos - left >= 0 && isCjk(text[pos - left]); left++) {
-      const maxRight = Math.min(MAX_WIN, text.length - (pos - left));
+      // `right` counts from `pos` itself, so it is bounded by the chars left in `text`
+      // (slicing beyond the end would silently shorten the candidate while `end` grew).
+      const maxRight = Math.min(MAX_WIN, text.length - pos);
       for (let right = 1; right <= maxRight; right++) {
         const start = pos - left;
         const end = start + left + right;
