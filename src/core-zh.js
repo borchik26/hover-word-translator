@@ -91,10 +91,32 @@ const CoreZh = (() => {
 
   /**
    * Forward / reverse maximum matching over dict.w within a window around the caret.
+   * Supports lookup by simplified headwords as well as traditional variants (via dict.tradMap or entry.trad).
    * Favors the longest entry containing the caret; ties break on length.
    */
+  function findWord(candidate, dict) {
+    if (Object.prototype.hasOwnProperty.call(dict.w, candidate)) {
+      return { entry: dict.w[candidate], key: candidate };
+    }
+    if (dict.tradMap && Object.prototype.hasOwnProperty.call(dict.tradMap, candidate)) {
+      const key = dict.tradMap[candidate];
+      return { entry: dict.w[key], key };
+    }
+    return null;
+  }
+
+  function ensureTradMap(dict) {
+    if (dict.tradMap) return;
+    dict.tradMap = {};
+    for (const [key, entry] of Object.entries(dict.w)) {
+      if (entry && entry.trad && entry.trad !== key) {
+        dict.tradMap[entry.trad] = key;
+      }
+    }
+  }
+
   function bidirectionalMatch(text, pos, dict) {
-    const words = dict.w;
+    ensureTradMap(dict);
     let best = null;
     for (let left = 0; left < MAX_WIN && pos - left >= 0 && isCjk(text[pos - left]); left++) {
       // `right` counts from `pos` itself, so it is bounded by the chars left in `text`
@@ -104,19 +126,22 @@ const CoreZh = (() => {
         const start = pos - left;
         const end = start + left + right;
         const candidate = text.slice(start, end);
-        if (!Object.prototype.hasOwnProperty.call(words, candidate)) continue;
+        const found = findWord(candidate, dict);
+        if (!found) continue;
         const containsCaret = pos >= start && pos < end;
         const length = end - start;
         const better = !best
           || (containsCaret && !best.containsCaret)
           || (containsCaret === best.containsCaret && length > best.length);
-        if (better) best = { candidate, start, end, length, containsCaret };
+        if (better) best = { candidate, start, end, length, containsCaret, entry: found.entry, headword: found.key };
       }
     }
     if (!best) {
       const single = text[pos];
-      if (!isCjk(single) || !Object.prototype.hasOwnProperty.call(words, single)) return null;
-      return { candidate: single, start: pos, end: pos + 1, length: 1, containsCaret: true };
+      if (!isCjk(single)) return null;
+      const found = findWord(single, dict);
+      if (!found) return null;
+      return { candidate: single, start: pos, end: pos + 1, length: 1, containsCaret: true, entry: found.entry, headword: found.key };
     }
     return best;
   }
@@ -140,7 +165,7 @@ const CoreZh = (() => {
     if (pos === null) return null;
     const match = bidirectionalMatch(text, pos, dict);
     if (!match) return null;
-    const entry = dict.w[match.candidate];
+    const entry = match.entry || dict.w[match.candidate];
     const settings = opts && opts.settings ? opts.settings : DEFAULT_SETTINGS;
     const translation = articleText(entry, match.candidate, settings);
     if (!translation) return null;

@@ -119,6 +119,13 @@ test('lookup: single character fallback when no multi-char word matches', () => 
   assert.match(res.translation, /ты/);
 });
 
+test('lookup: traditional Chinese matches simplified headwords', () => {
+  const res = CoreZh.lookup(DICT, '中國是一個偉大的國家', 0, {});
+  assert.ok(res);
+  assert.equal(res.word, '中國');
+  assert.match(res.translation, /Китай/);
+});
+
 test('lookup: unknown character returns null', () => {
   assert.equal(CoreZh.lookup(DICT, '喵', 0, {}), null);
 });
