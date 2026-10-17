@@ -9,14 +9,14 @@ const root = new URL('../', import.meta.url);
 const read = (path) => readFileSync(new URL(path, root), 'utf8');
 const stripNodeExport = (src) => src.replace(/^if \(typeof module !== 'undefined'\).*\n/m, '');
 
-function bundle({ headerFile, outFile, coreFile, dictPlaceholders }) {
+function bundle({ headerFile, outFile, coreFiles, dictPlaceholders }) {
   let header = read(headerFile);
   for (const [placeholder, envKey, defaultUrl] of dictPlaceholders) {
     header = header.replace(placeholder, process.env[envKey] || defaultUrl);
   }
-  const core = stripNodeExport(read(coreFile));
+  const parts = coreFiles.map((f) => stripNodeExport(read(f)));
   const main = read('src/main.js');
-  const out = `${header}\n(() => {\n'use strict';\n${[core, main].join('\n')}\n})();\n`;
+  const out = `${header}\n(() => {\n'use strict';\n${[...parts, main].join('\n')}\n})();\n`;
   writeFileSync(new URL(outFile, root), out);
   console.log(`${outFile} ${(out.length / 1024).toFixed(1)} KB`);
 }
@@ -25,14 +25,14 @@ function bundle({ headerFile, outFile, coreFile, dictPlaceholders }) {
 bundle({
   headerFile: 'src/header.txt',
   outFile: 'dist/hover-translator.user.js',
-  coreFile: 'src/core.js',
+  coreFiles: ['src/core.js'],
   dictPlaceholders: [['{{DICT_URL}}', 'DICT_URL', DEFAULT_DICT_URL]],
 });
 
 bundle({
   headerFile: 'src/header-zh.txt',
   outFile: 'dist/hover-translator-zh.user.js',
-  coreFile: 'src/core-zh.js',
+  coreFiles: ['src/core-zh.js', 'src/settings-ui.js'],
   dictPlaceholders: [
     ['{{DICT_ZH_BKRS_URL}}', 'DICT_ZH_BKRS_URL', DEFAULT_DICT_ZH_BKRS_URL],
     ['{{DICT_ZH_CEDICT_URL}}', 'DICT_ZH_CEDICT_URL', DEFAULT_DICT_ZH_CEDICT_URL],

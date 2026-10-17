@@ -170,7 +170,7 @@ hover-word-translator/
 
 ### Phase 4: Панель настроек в Shadow Root и интеграция Jieba
 
-- **Status:** Not started
+- **Status:** Done
 - **Scope:** Разработка легковесного UI панели настроек в shadow root с сохранением в `GM_setValue`, добавление моста к Jieba (с возможностью отключения).
 - **Files touched:** `src/settings-ui.js`, `src/main.js`, `src/core-zh.js`
 - **Acceptance criteria:** Настройки открываются по хоткею/меню, изменения реактивно переключают словарь и отображение элементов в попапе без перезагрузки страницы.

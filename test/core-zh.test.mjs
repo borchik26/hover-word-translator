@@ -134,6 +134,33 @@ test('articleText formats pinyin + senses + pos', () => {
   assert.match(text, /сущ\./);
 });
 
+test('articleText respects settings toggles (hide pinyin, pos, trad)', () => {
+  const withoutPinyin = CoreZh.articleText(DICT.w.中国, {
+    showPinyin: false,
+    showTraditional: true,
+    showPos: true,
+    showMultipleSenses: true,
+  });
+  assert.doesNotMatch(withoutPinyin, /Zhōng/);
+  assert.match(withoutPinyin, /Китай/);
+
+  const withoutPos = CoreZh.articleText(DICT.w.中国, {
+    showPinyin: true,
+    showTraditional: true,
+    showPos: false,
+    showMultipleSenses: true,
+  });
+  assert.doesNotMatch(withoutPos, /сущ/);
+
+  const singleSense = CoreZh.articleText(DICT.w.中国, {
+    showPinyin: true,
+    showTraditional: true,
+    showPos: true,
+    showMultipleSenses: false,
+  });
+  assert.doesNotMatch(singleSense, /китайский/);
+});
+
 // --- dictionary validation ---
 
 test('validateDict accepts well-formed dict', () => {

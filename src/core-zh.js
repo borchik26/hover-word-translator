@@ -127,13 +127,16 @@ const CoreZh = (() => {
     return best;
   }
 
-  function articleText(entry) {
+  function articleText(entry, settings) {
     if (!isPlainObject(entry)) return '';
-    const senses = Array.isArray(entry.t) ? entry.t : entry.t ? [entry.t] : [];
+    const s = settings || DEFAULT_SETTINGS;
     const parts = [];
-    if (entry.p) parts.push(pinyinToDiacritic(entry.p));
-    parts.push(senses.join('; '));
-    if (entry.pos) parts.push(`(${entry.pos})`);
+    if (s.showPinyin && entry.p) parts.push(pinyinToDiacritic(entry.p));
+    if (s.showTraditional && entry.trad && entry.trad !== entry.word) parts.push(`[${entry.trad}]`);
+    const rawSenses = Array.isArray(entry.t) ? entry.t : entry.t ? [entry.t] : [];
+    const senses = s.showMultipleSenses ? rawSenses : rawSenses.slice(0, 1);
+    if (senses.length) parts.push(senses.join('; '));
+    if (s.showPos && entry.pos) parts.push(`(${entry.pos})`);
     return parts.filter(Boolean).join(' — ');
   }
 
@@ -144,7 +147,8 @@ const CoreZh = (() => {
     const match = bidirectionalMatch(text, pos, dict);
     if (!match) return null;
     const entry = dict.w[match.candidate];
-    const translation = articleText(entry);
+    const settings = opts && opts.settings ? opts.settings : DEFAULT_SETTINGS;
+    const translation = articleText(entry, settings);
     if (!translation) return null;
     return { start: match.start, end: match.end, translation, word: match.candidate, entry };
   }

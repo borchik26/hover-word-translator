@@ -55,6 +55,7 @@ const CSS = `
 `;
 
 let overlayHost = null;
+let overlayRoot = null;
 let mask = null;
 let bubble = null;
 
@@ -67,6 +68,7 @@ function ensureOverlay() {
   for (const [prop, value] of hostStyle) overlayHost.style.setProperty(prop, value, 'important');
   overlayHost.setAttribute('aria-hidden', 'true');
   const root = overlayHost.attachShadow({ mode: 'closed' });
+  overlayRoot = root;
   try {
     const sheet = new CSSStyleSheet();
     sheet.replaceSync(CSS);
@@ -82,6 +84,14 @@ function ensureOverlay() {
   bubble.className = 'bubble';
   root.append(mask, bubble);
   document.documentElement.append(overlayHost);
+}
+
+function openSettings() {
+  if (typeof SettingsUI === 'undefined' || !state.zhSettings) return;
+  ensureOverlay();
+  SettingsUI.mount(overlayRoot, state.zhSettings, (newSettings) => {
+    GM_setValue('zh_settings', newSettings);
+  });
 }
 
 function setBox(el, box) {
@@ -235,7 +245,13 @@ document.addEventListener('pointerdown', hide, passiveCapture);
 document.addEventListener('touchstart', hide, passiveCapture);
 document.addEventListener('mouseout', (e) => e.relatedTarget === null && hide(), passiveCapture);
 document.addEventListener('visibilitychange', hide);
-document.addEventListener('keydown', (e) => e.key === 'Escape' && hide(), true);
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') hide();
+  if (e.altKey && (e.key === 's' || e.key === 'ы')) {
+    e.preventDefault();
+    openSettings();
+  }
+}, true);
 window.addEventListener('blur', hide);
 window.addEventListener('resize', hide);
 
@@ -260,6 +276,9 @@ function renderMenu() {
   ];
   if (labels.guess) menuIds.push(GM_registerMenuCommand(labels.guess, () => GM_setValue('guessEnabled', !state.guess)));
   if (labels.warning) menuIds.push(GM_registerMenuCommand(labels.warning, () => {}));
+  if (typeof SettingsUI !== 'undefined' && state.zhSettings) {
+    menuIds.push(GM_registerMenuCommand('⚙ Настройки (ZH)', openSettings));
+  }
 }
 
 // The listener also fires in the tab that changed the value, so it is the only re-render path.
