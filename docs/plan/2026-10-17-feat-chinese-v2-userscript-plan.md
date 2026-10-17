@@ -162,7 +162,7 @@ hover-word-translator/
 
 ### Phase 3: Пайплайн сборки китайских словарей
 
-- **Status:** Not started
+- **Status:** Done
 - **Scope:** Разработка `build/build_dict_zh.py` для конвертации дампов БКРС и CC-CEDICT (+ en→ru fusion) в компактный JSON `dist/dict-zh-*.json`.
 - **Files touched:** `build/build_dict_zh.py`, `build/tests/test_build_dict_zh.py`
 - **Acceptance criteria:** Скрипт принимает тестовую фикстуру дампа БКРС и строки CC-CEDICT, генерирует валидный JSON словаря, проходящий валидацию `CoreZh.validateDict`.
