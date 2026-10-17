@@ -26,18 +26,22 @@ const SettingsUI = (() => {
   `;
 
   let backdrop = null;
+  let installedSheet = null;
 
   function mount(root, settings, onChange) {
     if (backdrop && backdrop.isConnected) return close();
 
-    try {
-      const sheet = new CSSStyleSheet();
-      sheet.replaceSync(CSS);
-      root.adoptedStyleSheets = [...root.adoptedStyleSheets, sheet];
-    } catch {
-      const style = document.createElement('style');
-      style.textContent = CSS;
-      root.append(style);
+    if (!installedSheet) {
+      try {
+        installedSheet = new CSSStyleSheet();
+        installedSheet.replaceSync(CSS);
+        root.adoptedStyleSheets = [...root.adoptedStyleSheets, installedSheet];
+      } catch {
+        const style = document.createElement('style');
+        style.textContent = CSS;
+        root.append(style);
+        installedSheet = style;
+      }
     }
 
     backdrop = document.createElement('div');
@@ -61,14 +65,6 @@ const SettingsUI = (() => {
         </select>
       </div>
       <div class="hwt-row">
-        <label>Сегментация</label>
-        <select id="hwt-seg">
-          <option value="matching" ${settings.segmentation === 'matching' ? 'selected' : ''}>BiMM (по словарю)</option>
-          <option value="hybrid" ${settings.segmentation === 'hybrid' ? 'selected' : ''}>Гибрид</option>
-          <option value="jieba" ${settings.segmentation === 'jieba' ? 'selected' : ''}>Jieba-js</option>
-        </select>
-      </div>
-      <div class="hwt-row">
         <label>Режим оверлея</label>
         <select id="hwt-mode">
           <option value="cover" ${settings.overlayMode === 'cover' ? 'selected' : ''}>Cover (замена)</option>
@@ -85,6 +81,10 @@ const SettingsUI = (() => {
         <input type="checkbox" id="hwt-trad" ${settings.showTraditional ? 'checked' : ''}>
       </div>
       <div class="hwt-row">
+        <label for="hwt-senses">Все значения (синонимы)</label>
+        <input type="checkbox" id="hwt-senses" ${settings.showMultipleSenses ? 'checked' : ''}>
+      </div>
+      <div class="hwt-row">
         <label for="hwt-pos">Части речи (POS)</label>
         <input type="checkbox" id="hwt-pos" ${settings.showPos ? 'checked' : ''}>
       </div>
@@ -96,13 +96,11 @@ const SettingsUI = (() => {
     const update = () => {
       const newSettings = {
         dictSource: panel.querySelector('#hwt-dict').value,
-        segmentation: panel.querySelector('#hwt-seg').value,
         overlayMode: panel.querySelector('#hwt-mode').value,
         showPinyin: panel.querySelector('#hwt-pinyin').checked,
         showTraditional: panel.querySelector('#hwt-trad').checked,
+        showMultipleSenses: panel.querySelector('#hwt-senses').checked,
         showPos: panel.querySelector('#hwt-pos').checked,
-        showMultipleSenses: settings.showMultipleSenses,
-        disabledHosts: settings.disabledHosts,
       };
       onChange(newSettings);
     };

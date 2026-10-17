@@ -39,6 +39,12 @@ test('pinyinDiacritic: ü (v) and erhua edge cases', () => {
   assert.equal(CoreZh.pinyinDiacritic('zhui1'), 'zhuī');
 });
 
+test('pinyinDiacritic: vowel-less syllables like n2 and m2 return bare base without crashing', () => {
+  assert.equal(CoreZh.pinyinDiacritic('n2'), 'n');
+  assert.equal(CoreZh.pinyinDiacritic('m2'), 'm');
+  assert.equal(CoreZh.pinyinDiacritic('ng4'), 'ng');
+});
+
 test('pinyinDiacritic: neutral tone (0/5/no digit) leaves vowels bare', () => {
   assert.equal(CoreZh.pinyinDiacritic('de5'), 'de');
   assert.equal(CoreZh.pinyinDiacritic('ma'), 'ma');
@@ -128,14 +134,22 @@ test('lookup: caret on non-CJK punctuation returns null', () => {
 // --- article formatting ---
 
 test('articleText formats pinyin + senses + pos', () => {
-  const text = CoreZh.articleText(DICT.w.中国);
+  const text = CoreZh.articleText(DICT.w.中国, '中国');
   assert.match(text, /Zhōng guó/);
   assert.match(text, /Китай/);
   assert.match(text, /сущ\./);
+  assert.match(text, /\[中國\]/); // traditional differs from simplified
+});
+
+test('articleText suppresses traditional bracket when trad equals simp', () => {
+  const text = CoreZh.articleText(DICT.w.好, '好');
+  assert.doesNotMatch(text, /\[好\]/); // trad === word, bracket must not appear
+  assert.match(text, /hǎo/);
+  assert.match(text, /хороший/);
 });
 
 test('articleText respects settings toggles (hide pinyin, pos, trad)', () => {
-  const withoutPinyin = CoreZh.articleText(DICT.w.中国, {
+  const withoutPinyin = CoreZh.articleText(DICT.w.中国, '中国', {
     showPinyin: false,
     showTraditional: true,
     showPos: true,
@@ -144,7 +158,7 @@ test('articleText respects settings toggles (hide pinyin, pos, trad)', () => {
   assert.doesNotMatch(withoutPinyin, /Zhōng/);
   assert.match(withoutPinyin, /Китай/);
 
-  const withoutPos = CoreZh.articleText(DICT.w.中国, {
+  const withoutPos = CoreZh.articleText(DICT.w.中国, '中国', {
     showPinyin: true,
     showTraditional: true,
     showPos: false,
@@ -152,7 +166,7 @@ test('articleText respects settings toggles (hide pinyin, pos, trad)', () => {
   });
   assert.doesNotMatch(withoutPos, /сущ/);
 
-  const singleSense = CoreZh.articleText(DICT.w.中国, {
+  const singleSense = CoreZh.articleText(DICT.w.中国, '中国', {
     showPinyin: true,
     showTraditional: true,
     showPos: true,
@@ -192,14 +206,26 @@ test('langAllowed: zh and en allowed, others denied', () => {
 test('parseSettings tolerates missing/corrupted values', () => {
   const d = CoreZh.parseSettings(null);
   assert.equal(d.dictSource, 'bkrs');
-  assert.equal(d.segmentation, 'hybrid');
   assert.equal(d.showPinyin, true);
-  assert.ok(Array.isArray(d.disabledHosts));
 
-  const c = CoreZh.parseSettings({ dictSource: 'bad', showPinyin: false, disabledHosts: 'x' });
+  const c = CoreZh.parseSettings({ dictSource: 'bad', showPinyin: false });
   assert.equal(c.dictSource, 'bkrs');
   assert.equal(c.showPinyin, false);
-  assert.deepEqual(c.disabledHosts, []);
+
+  const cedict = CoreZh.parseSettings({ dictSource: 'cedict' });
+  assert.equal(cedict.dictSource, 'cedict');
+});
+
+test('menuLabels returns expected structure without guess option', () => {
+  const labels = CoreZh.menuLabels({ host: 'example.com', disabled: false, mode: 'cover', dictFailed: false });
+  assert.equal(labels.toggle, 'Выключить на example.com');
+  assert.equal(labels.mode, 'Режим: cover');
+  assert.equal(labels.guess, null);
+  assert.equal(labels.warning, null);
+
+  const failedLabels = CoreZh.menuLabels({ host: 'example.com', disabled: true, mode: 'blur', dictFailed: true });
+  assert.equal(failedLabels.toggle, 'Включить на example.com');
+  assert.match(failedLabels.warning, /Словарь не загружен/);
 });
 
 // --- helpers ---

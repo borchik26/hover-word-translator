@@ -3,10 +3,8 @@
 // dictionary-entry formatting and dictionary validation.
 const CoreZh = (() => {
   const MODES = ['cover', 'blur', 'tooltip'];
-  const SEGMENT_MODES = ['matching', 'jieba', 'hybrid'];
   const DICT_SOURCES = ['bkrs', 'cedict'];
   const MAX_WIN = 8; // symbols on each side of caret for BiMM window
-  const RARE_CJK_RE = /[㐀-䶿㐀-䶿豈-﫿㐀-䶿豈-﫿぀-ヿ]/;
   const CJK_RE = /[㐀-䶿一-鿿豈-﫿぀-ヿ]/;
 
   // Numeric pinyin tone table.
@@ -18,7 +16,6 @@ const CoreZh = (() => {
     u: ['ū', 'ú', 'ǔ', 'ù'],
     v: ['ǖ', 'ǘ', 'ǚ', 'ǜ'],
   };
-  const TONE_MARKS = ['ā', 'á', 'ǎ', 'à', 'ē', 'é', 'ě', 'è', 'ī', 'í', 'ǐ', 'ì', 'ō', 'ó', 'ǒ', 'ò', 'ū', 'ú', 'ǔ', 'ù', 'ǖ', 'ǘ', 'ǚ', 'ǜ'];
 
   function isCjk(ch) {
     return CJK_RE.test(ch);
@@ -51,14 +48,11 @@ const CoreZh = (() => {
         }
       }
     }
+    if (idx === -1) return base.replace(/v/g, 'ü').replace(/V/g, 'Ü');
     const ch = lower[idx];
     const accented = ch === 'v' ? TONE_MAP.v[tone - 1] : TONE_MAP[ch][tone - 1];
     const diacritic = base.slice(0, idx) + accented + base.slice(idx + 1);
     return diacritic.replace(/v/g, 'ü').replace(/V/g, 'Ü');
-  }
-
-  function isToneMarked(ch) {
-    return TONE_MARKS.includes(ch);
   }
 
   /** Splits a pinyin string ("Zhong1 guo2" / "ni3hao3") into diacritic syllables. */
@@ -127,12 +121,12 @@ const CoreZh = (() => {
     return best;
   }
 
-  function articleText(entry, settings) {
+  function articleText(entry, word, settings) {
     if (!isPlainObject(entry)) return '';
     const s = settings || DEFAULT_SETTINGS;
     const parts = [];
     if (s.showPinyin && entry.p) parts.push(pinyinToDiacritic(entry.p));
-    if (s.showTraditional && entry.trad && entry.trad !== entry.word) parts.push(`[${entry.trad}]`);
+    if (s.showTraditional && entry.trad && entry.trad !== word) parts.push(`[${entry.trad}]`);
     const rawSenses = Array.isArray(entry.t) ? entry.t : entry.t ? [entry.t] : [];
     const senses = s.showMultipleSenses ? rawSenses : rawSenses.slice(0, 1);
     if (senses.length) parts.push(senses.join('; '));
@@ -148,7 +142,7 @@ const CoreZh = (() => {
     if (!match) return null;
     const entry = dict.w[match.candidate];
     const settings = opts && opts.settings ? opts.settings : DEFAULT_SETTINGS;
-    const translation = articleText(entry, settings);
+    const translation = articleText(entry, match.candidate, settings);
     if (!translation) return null;
     return { start: match.start, end: match.end, translation, word: match.candidate, entry };
   }
@@ -207,26 +201,22 @@ const CoreZh = (() => {
 
   const DEFAULT_SETTINGS = {
     dictSource: 'bkrs',
-    segmentation: 'hybrid',
     overlayMode: 'cover',
     showPinyin: true,
     showTraditional: true,
     showPos: true,
     showMultipleSenses: true,
-    disabledHosts: [],
   };
 
   function parseSettings(value) {
     const s = isPlainObject(value) ? value : {};
     return {
       dictSource: DICT_SOURCES.includes(s.dictSource) ? s.dictSource : DEFAULT_SETTINGS.dictSource,
-      segmentation: SEGMENT_MODES.includes(s.segmentation) ? s.segmentation : DEFAULT_SETTINGS.segmentation,
       overlayMode: MODES.includes(s.overlayMode) ? s.overlayMode : DEFAULT_SETTINGS.overlayMode,
       showPinyin: s.showPinyin !== false,
       showTraditional: s.showTraditional !== false,
       showPos: s.showPos !== false,
       showMultipleSenses: s.showMultipleSenses !== false,
-      disabledHosts: parseHosts(s.disabledHosts),
     };
   }
 
@@ -241,12 +231,10 @@ const CoreZh = (() => {
 
   return {
     MODES,
-    SEGMENT_MODES,
     DICT_SOURCES,
     MAX_WIN,
     DEFAULT_SETTINGS,
     isCjk,
-    isToneMarked,
     cjkSpans,
     cjkIndexAt,
     pinyinDiacritic,

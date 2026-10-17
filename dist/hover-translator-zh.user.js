@@ -22,10 +22,8 @@
 // dictionary-entry formatting and dictionary validation.
 const CoreZh = (() => {
   const MODES = ['cover', 'blur', 'tooltip'];
-  const SEGMENT_MODES = ['matching', 'jieba', 'hybrid'];
   const DICT_SOURCES = ['bkrs', 'cedict'];
   const MAX_WIN = 8; // symbols on each side of caret for BiMM window
-  const RARE_CJK_RE = /[㐀-䶿㐀-䶿豈-﫿㐀-䶿豈-﫿぀-ヿ]/;
   const CJK_RE = /[㐀-䶿一-鿿豈-﫿぀-ヿ]/;
 
   // Numeric pinyin tone table.
@@ -37,7 +35,6 @@ const CoreZh = (() => {
     u: ['ū', 'ú', 'ǔ', 'ù'],
     v: ['ǖ', 'ǘ', 'ǚ', 'ǜ'],
   };
-  const TONE_MARKS = ['ā', 'á', 'ǎ', 'à', 'ē', 'é', 'ě', 'è', 'ī', 'í', 'ǐ', 'ì', 'ō', 'ó', 'ǒ', 'ò', 'ū', 'ú', 'ǔ', 'ù', 'ǖ', 'ǘ', 'ǚ', 'ǜ'];
 
   function isCjk(ch) {
     return CJK_RE.test(ch);
@@ -70,14 +67,11 @@ const CoreZh = (() => {
         }
       }
     }
+    if (idx === -1) return base.replace(/v/g, 'ü').replace(/V/g, 'Ü');
     const ch = lower[idx];
     const accented = ch === 'v' ? TONE_MAP.v[tone - 1] : TONE_MAP[ch][tone - 1];
     const diacritic = base.slice(0, idx) + accented + base.slice(idx + 1);
     return diacritic.replace(/v/g, 'ü').replace(/V/g, 'Ü');
-  }
-
-  function isToneMarked(ch) {
-    return TONE_MARKS.includes(ch);
   }
 
   /** Splits a pinyin string ("Zhong1 guo2" / "ni3hao3") into diacritic syllables. */
@@ -146,12 +140,12 @@ const CoreZh = (() => {
     return best;
   }
 
-  function articleText(entry, settings) {
+  function articleText(entry, word, settings) {
     if (!isPlainObject(entry)) return '';
     const s = settings || DEFAULT_SETTINGS;
     const parts = [];
     if (s.showPinyin && entry.p) parts.push(pinyinToDiacritic(entry.p));
-    if (s.showTraditional && entry.trad && entry.trad !== entry.word) parts.push(`[${entry.trad}]`);
+    if (s.showTraditional && entry.trad && entry.trad !== word) parts.push(`[${entry.trad}]`);
     const rawSenses = Array.isArray(entry.t) ? entry.t : entry.t ? [entry.t] : [];
     const senses = s.showMultipleSenses ? rawSenses : rawSenses.slice(0, 1);
     if (senses.length) parts.push(senses.join('; '));
@@ -167,7 +161,7 @@ const CoreZh = (() => {
     if (!match) return null;
     const entry = dict.w[match.candidate];
     const settings = opts && opts.settings ? opts.settings : DEFAULT_SETTINGS;
-    const translation = articleText(entry, settings);
+    const translation = articleText(entry, match.candidate, settings);
     if (!translation) return null;
     return { start: match.start, end: match.end, translation, word: match.candidate, entry };
   }
@@ -226,26 +220,22 @@ const CoreZh = (() => {
 
   const DEFAULT_SETTINGS = {
     dictSource: 'bkrs',
-    segmentation: 'hybrid',
     overlayMode: 'cover',
     showPinyin: true,
     showTraditional: true,
     showPos: true,
     showMultipleSenses: true,
-    disabledHosts: [],
   };
 
   function parseSettings(value) {
     const s = isPlainObject(value) ? value : {};
     return {
       dictSource: DICT_SOURCES.includes(s.dictSource) ? s.dictSource : DEFAULT_SETTINGS.dictSource,
-      segmentation: SEGMENT_MODES.includes(s.segmentation) ? s.segmentation : DEFAULT_SETTINGS.segmentation,
       overlayMode: MODES.includes(s.overlayMode) ? s.overlayMode : DEFAULT_SETTINGS.overlayMode,
       showPinyin: s.showPinyin !== false,
       showTraditional: s.showTraditional !== false,
       showPos: s.showPos !== false,
       showMultipleSenses: s.showMultipleSenses !== false,
-      disabledHosts: parseHosts(s.disabledHosts),
     };
   }
 
@@ -260,12 +250,10 @@ const CoreZh = (() => {
 
   return {
     MODES,
-    SEGMENT_MODES,
     DICT_SOURCES,
     MAX_WIN,
     DEFAULT_SETTINGS,
     isCjk,
-    isToneMarked,
     cjkSpans,
     cjkIndexAt,
     pinyinDiacritic,
@@ -316,18 +304,22 @@ const SettingsUI = (() => {
   `;
 
   let backdrop = null;
+  let installedSheet = null;
 
   function mount(root, settings, onChange) {
     if (backdrop && backdrop.isConnected) return close();
 
-    try {
-      const sheet = new CSSStyleSheet();
-      sheet.replaceSync(CSS);
-      root.adoptedStyleSheets = [...root.adoptedStyleSheets, sheet];
-    } catch {
-      const style = document.createElement('style');
-      style.textContent = CSS;
-      root.append(style);
+    if (!installedSheet) {
+      try {
+        installedSheet = new CSSStyleSheet();
+        installedSheet.replaceSync(CSS);
+        root.adoptedStyleSheets = [...root.adoptedStyleSheets, installedSheet];
+      } catch {
+        const style = document.createElement('style');
+        style.textContent = CSS;
+        root.append(style);
+        installedSheet = style;
+      }
     }
 
     backdrop = document.createElement('div');
@@ -351,14 +343,6 @@ const SettingsUI = (() => {
         </select>
       </div>
       <div class="hwt-row">
-        <label>Сегментация</label>
-        <select id="hwt-seg">
-          <option value="matching" ${settings.segmentation === 'matching' ? 'selected' : ''}>BiMM (по словарю)</option>
-          <option value="hybrid" ${settings.segmentation === 'hybrid' ? 'selected' : ''}>Гибрид</option>
-          <option value="jieba" ${settings.segmentation === 'jieba' ? 'selected' : ''}>Jieba-js</option>
-        </select>
-      </div>
-      <div class="hwt-row">
         <label>Режим оверлея</label>
         <select id="hwt-mode">
           <option value="cover" ${settings.overlayMode === 'cover' ? 'selected' : ''}>Cover (замена)</option>
@@ -375,6 +359,10 @@ const SettingsUI = (() => {
         <input type="checkbox" id="hwt-trad" ${settings.showTraditional ? 'checked' : ''}>
       </div>
       <div class="hwt-row">
+        <label for="hwt-senses">Все значения (синонимы)</label>
+        <input type="checkbox" id="hwt-senses" ${settings.showMultipleSenses ? 'checked' : ''}>
+      </div>
+      <div class="hwt-row">
         <label for="hwt-pos">Части речи (POS)</label>
         <input type="checkbox" id="hwt-pos" ${settings.showPos ? 'checked' : ''}>
       </div>
@@ -386,13 +374,11 @@ const SettingsUI = (() => {
     const update = () => {
       const newSettings = {
         dictSource: panel.querySelector('#hwt-dict').value,
-        segmentation: panel.querySelector('#hwt-seg').value,
         overlayMode: panel.querySelector('#hwt-mode').value,
         showPinyin: panel.querySelector('#hwt-pinyin').checked,
         showTraditional: panel.querySelector('#hwt-trad').checked,
+        showMultipleSenses: panel.querySelector('#hwt-senses').checked,
         showPos: panel.querySelector('#hwt-pos').checked,
-        showMultipleSenses: settings.showMultipleSenses,
-        disabledHosts: settings.disabledHosts,
       };
       onChange(newSettings);
     };
@@ -669,7 +655,7 @@ document.addEventListener('mouseout', (e) => e.relatedTarget === null && hide(),
 document.addEventListener('visibilitychange', hide);
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') hide();
-  if (e.altKey && (e.key === 's' || e.key === 'ы')) {
+  if (e.altKey && e.code === 'KeyS' && typeof SettingsUI !== 'undefined' && state.zhSettings) {
     e.preventDefault();
     openSettings();
   }
@@ -710,6 +696,7 @@ function onSettingChanged(name, _old, value) {
   else if (name === 'guessEnabled' && Engine.parseGuess) state.guess = Engine.parseGuess(value);
   else if (name === 'zh_settings' && Engine.parseSettings) {
     state.zhSettings = Engine.parseSettings(value);
+    if (state.zhSettings.overlayMode) state.mode = state.zhSettings.overlayMode;
     state.dict = null;
     state.dictFailed = false;
   }

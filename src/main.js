@@ -247,7 +247,7 @@ document.addEventListener('mouseout', (e) => e.relatedTarget === null && hide(),
 document.addEventListener('visibilitychange', hide);
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') hide();
-  if (e.altKey && (e.key === 's' || e.key === 'ы')) {
+  if (e.altKey && e.code === 'KeyS' && typeof SettingsUI !== 'undefined' && state.zhSettings) {
     e.preventDefault();
     openSettings();
   }
@@ -288,6 +288,7 @@ function onSettingChanged(name, _old, value) {
   else if (name === 'guessEnabled' && Engine.parseGuess) state.guess = Engine.parseGuess(value);
   else if (name === 'zh_settings' && Engine.parseSettings) {
     state.zhSettings = Engine.parseSettings(value);
+    if (state.zhSettings.overlayMode) state.mode = state.zhSettings.overlayMode;
     state.dict = null;
     state.dictFailed = false;
   }

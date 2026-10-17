@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Hover Word Translator
 // @namespace    https://github.com/borchik26/hover-word-translator
-// @version      2.1.0
+// @version      2.2.0
 // @description  Shows the Russian translation of the English word or phrase under the cursor. Dictionary: Wiktionary via kaikki.org (CC BY-SA 4.0), FrequencyWords (CC BY-SA 4.0).
 // @match        *://*/*
 // @run-at       document-idle
@@ -599,7 +599,7 @@ document.addEventListener('mouseout', (e) => e.relatedTarget === null && hide(),
 document.addEventListener('visibilitychange', hide);
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') hide();
-  if (e.altKey && (e.key === 's' || e.key === 'ы')) {
+  if (e.altKey && e.code === 'KeyS' && typeof SettingsUI !== 'undefined' && state.zhSettings) {
     e.preventDefault();
     openSettings();
   }
@@ -640,6 +640,7 @@ function onSettingChanged(name, _old, value) {
   else if (name === 'guessEnabled' && Engine.parseGuess) state.guess = Engine.parseGuess(value);
   else if (name === 'zh_settings' && Engine.parseSettings) {
     state.zhSettings = Engine.parseSettings(value);
+    if (state.zhSettings.overlayMode) state.mode = state.zhSettings.overlayMode;
     state.dict = null;
     state.dictFailed = false;
   }
