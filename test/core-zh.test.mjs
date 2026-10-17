@@ -210,14 +210,19 @@ test('langAllowed: zh and en allowed, others denied', () => {
 
 // --- settings parsing ---
 
-test('parseSettings tolerates missing/corrupted values', () => {
+test('parseSettings tolerates missing/corrupted values and parses highlightStyle', () => {
   const d = CoreZh.parseSettings(null);
   assert.equal(d.dictSource, 'bkrs');
   assert.equal(d.showPinyin, true);
+  assert.equal(d.highlightStyle, 'box');
 
-  const c = CoreZh.parseSettings({ dictSource: 'bad', showPinyin: false });
+  const c = CoreZh.parseSettings({ dictSource: 'bad', showPinyin: false, highlightStyle: 'underline' });
   assert.equal(c.dictSource, 'bkrs');
   assert.equal(c.showPinyin, false);
+  assert.equal(c.highlightStyle, 'underline');
+
+  const invalidHl = CoreZh.parseSettings({ highlightStyle: 'unknown' });
+  assert.equal(invalidHl.highlightStyle, 'box');
 
   const cedict = CoreZh.parseSettings({ dictSource: 'cedict' });
   assert.equal(cedict.dictSource, 'cedict');

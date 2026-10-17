@@ -73,6 +73,16 @@ const SettingsUI = (() => {
         </select>
       </div>
       <div class="hwt-row">
+        <label>Границы слова</label>
+        <select id="hwt-highlight">
+          <option value="box" ${settings.highlightStyle === 'box' ? 'selected' : ''}>Рамка (прямоугольник)</option>
+          <option value="underline" ${settings.highlightStyle === 'underline' ? 'selected' : ''}>Подчеркивание</option>
+          <option value="bg" ${settings.highlightStyle === 'bg' ? 'selected' : ''}>Подсветка фоном</option>
+          <option value="box-bg" ${settings.highlightStyle === 'box-bg' ? 'selected' : ''}>Рамка + подсветка</option>
+          <option value="none" ${settings.highlightStyle === 'none' ? 'selected' : ''}>Без выделения</option>
+        </select>
+      </div>
+      <div class="hwt-row">
         <label for="hwt-pinyin">Пиньинь с тонами</label>
         <input type="checkbox" id="hwt-pinyin" ${settings.showPinyin ? 'checked' : ''}>
       </div>
@@ -97,6 +107,7 @@ const SettingsUI = (() => {
       const newSettings = {
         dictSource: panel.querySelector('#hwt-dict').value,
         overlayMode: panel.querySelector('#hwt-mode').value,
+        highlightStyle: panel.querySelector('#hwt-highlight').value,
         showPinyin: panel.querySelector('#hwt-pinyin').checked,
         showTraditional: panel.querySelector('#hwt-trad').checked,
         showMultipleSenses: panel.querySelector('#hwt-senses').checked,

@@ -390,7 +390,7 @@ function loadDict() {
 // ---------- overlay ----------
 
 const CSS = `
-.mask, .bubble { position: fixed; display: none; box-sizing: border-box; pointer-events: none; user-select: none; }
+.mask, .bubble, .highlight { position: fixed; display: none; box-sizing: border-box; pointer-events: none; user-select: none; }
 .bubble {
   max-width: 320px; padding: 1px 6px; border-radius: 4px;
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif; line-height: 1.3;
@@ -404,12 +404,23 @@ const CSS = `
 @media (prefers-color-scheme: dark) {
   .bubble { background: #1f1f1f; color: #f2f2f2; border-color: rgba(255, 255, 255, .35); }
 }
+.hl-box { border: 2px solid #2563eb; border-radius: 3px; background: transparent; }
+.hl-underline { border-bottom: 2px solid #2563eb; background: transparent; }
+.hl-bg { background: rgba(37, 99, 235, 0.18); border-radius: 2px; }
+.hl-box-bg { border: 1.5px solid #2563eb; background: rgba(37, 99, 235, 0.15); border-radius: 3px; }
+@media (prefers-color-scheme: dark) {
+  .hl-box { border-color: #60a5fa; }
+  .hl-underline { border-bottom-color: #60a5fa; }
+  .hl-bg { background: rgba(96, 165, 250, 0.25); }
+  .hl-box-bg { border-color: #60a5fa; background: rgba(96, 165, 250, 0.22); }
+}
 `;
 
 let overlayHost = null;
 let overlayRoot = null;
 let mask = null;
 let bubble = null;
+let highlight = null;
 
 function ensureOverlay() {
   if (overlayHost && overlayHost.isConnected) return;
@@ -432,9 +443,11 @@ function ensureOverlay() {
   }
   mask = document.createElement('div');
   mask.className = 'mask';
+  highlight = document.createElement('div');
+  highlight.className = 'highlight';
   bubble = document.createElement('div');
   bubble.className = 'bubble';
-  root.append(mask, bubble);
+  root.append(mask, highlight, bubble);
   document.documentElement.append(overlayHost);
 }
 
@@ -466,6 +479,17 @@ function render(hit) {
   setBox(bubble, cover ? { 'min-width': rect.width, 'min-height': rect.height } : {});
   setBox(mask, { left: rect.left, top: rect.top, width: rect.width, height: rect.height });
   mask.style.setProperty('display', state.mode === 'blur' ? 'block' : 'none');
+
+  // Highlight word boundaries (box, underline, bg)
+  const hlStyle = state.zhSettings ? state.zhSettings.highlightStyle : 'none';
+  if (highlight && hlStyle && hlStyle !== 'none' && !cover) {
+    setBox(highlight, { left: rect.left - 1, top: rect.top - 1, width: rect.width + 2, height: rect.height + 2 });
+    highlight.className = `highlight hl-${hlStyle}`;
+    highlight.style.setProperty('display', 'block');
+  } else if (highlight) {
+    highlight.style.setProperty('display', 'none');
+  }
+
   bubble.style.setProperty('display', 'block');
   const size = bubble.getBoundingClientRect();
   const anchor = cover ? rect : { left: rect.left, top: rect.top - 2, bottom: rect.bottom + 2 };
@@ -494,6 +518,7 @@ function hide() {
   lastVisibleAt = performance.now();
   bubble.style.setProperty('display', 'none');
   mask.style.setProperty('display', 'none');
+  if (highlight) highlight.style.setProperty('display', 'none');
 }
 
 function show(hit) {

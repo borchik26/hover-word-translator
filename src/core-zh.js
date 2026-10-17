@@ -224,9 +224,12 @@ const CoreZh = (() => {
     return MODES[(MODES.indexOf(mode) + 1) % MODES.length];
   }
 
+  const HIGHLIGHT_STYLES = ['box', 'underline', 'bg', 'box-bg', 'none'];
+
   const DEFAULT_SETTINGS = {
     dictSource: 'bkrs',
     overlayMode: 'cover',
+    highlightStyle: 'box',
     showPinyin: true,
     showTraditional: true,
     showPos: true,
@@ -238,6 +241,7 @@ const CoreZh = (() => {
     return {
       dictSource: DICT_SOURCES.includes(s.dictSource) ? s.dictSource : DEFAULT_SETTINGS.dictSource,
       overlayMode: MODES.includes(s.overlayMode) ? s.overlayMode : DEFAULT_SETTINGS.overlayMode,
+      highlightStyle: HIGHLIGHT_STYLES.includes(s.highlightStyle) ? s.highlightStyle : DEFAULT_SETTINGS.highlightStyle,
       showPinyin: s.showPinyin !== false,
       showTraditional: s.showTraditional !== false,
       showPos: s.showPos !== false,
@@ -256,6 +260,7 @@ const CoreZh = (() => {
 
   return {
     MODES,
+    HIGHLIGHT_STYLES,
     DICT_SOURCES,
     MAX_WIN,
     DEFAULT_SETTINGS,

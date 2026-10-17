@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Hover Word Translator (Chinese to Russian)
 // @namespace    https://github.com/borchik26/hover-word-translator
-// @version      2.0.1
+// @version      2.1.0
 // @description  Shows Russian translation and pinyin for Chinese words under the cursor with bidirectional matching segmentation. Dictionaries: BKRS, CC-CEDICT.
 // @match        *://*/*
 // @run-at       document-idle
@@ -243,9 +243,12 @@ const CoreZh = (() => {
     return MODES[(MODES.indexOf(mode) + 1) % MODES.length];
   }
 
+  const HIGHLIGHT_STYLES = ['box', 'underline', 'bg', 'box-bg', 'none'];
+
   const DEFAULT_SETTINGS = {
     dictSource: 'bkrs',
     overlayMode: 'cover',
+    highlightStyle: 'box',
     showPinyin: true,
     showTraditional: true,
     showPos: true,
@@ -257,6 +260,7 @@ const CoreZh = (() => {
     return {
       dictSource: DICT_SOURCES.includes(s.dictSource) ? s.dictSource : DEFAULT_SETTINGS.dictSource,
       overlayMode: MODES.includes(s.overlayMode) ? s.overlayMode : DEFAULT_SETTINGS.overlayMode,
+      highlightStyle: HIGHLIGHT_STYLES.includes(s.highlightStyle) ? s.highlightStyle : DEFAULT_SETTINGS.highlightStyle,
       showPinyin: s.showPinyin !== false,
       showTraditional: s.showTraditional !== false,
       showPos: s.showPos !== false,
@@ -275,6 +279,7 @@ const CoreZh = (() => {
 
   return {
     MODES,
+    HIGHLIGHT_STYLES,
     DICT_SOURCES,
     MAX_WIN,
     DEFAULT_SETTINGS,
@@ -376,6 +381,16 @@ const SettingsUI = (() => {
         </select>
       </div>
       <div class="hwt-row">
+        <label>Границы слова</label>
+        <select id="hwt-highlight">
+          <option value="box" ${settings.highlightStyle === 'box' ? 'selected' : ''}>Рамка (прямоугольник)</option>
+          <option value="underline" ${settings.highlightStyle === 'underline' ? 'selected' : ''}>Подчеркивание</option>
+          <option value="bg" ${settings.highlightStyle === 'bg' ? 'selected' : ''}>Подсветка фоном</option>
+          <option value="box-bg" ${settings.highlightStyle === 'box-bg' ? 'selected' : ''}>Рамка + подсветка</option>
+          <option value="none" ${settings.highlightStyle === 'none' ? 'selected' : ''}>Без выделения</option>
+        </select>
+      </div>
+      <div class="hwt-row">
         <label for="hwt-pinyin">Пиньинь с тонами</label>
         <input type="checkbox" id="hwt-pinyin" ${settings.showPinyin ? 'checked' : ''}>
       </div>
@@ -400,6 +415,7 @@ const SettingsUI = (() => {
       const newSettings = {
         dictSource: panel.querySelector('#hwt-dict').value,
         overlayMode: panel.querySelector('#hwt-mode').value,
+        highlightStyle: panel.querySelector('#hwt-highlight').value,
         showPinyin: panel.querySelector('#hwt-pinyin').checked,
         showTraditional: panel.querySelector('#hwt-trad').checked,
         showMultipleSenses: panel.querySelector('#hwt-senses').checked,
@@ -471,7 +487,7 @@ function loadDict() {
 // ---------- overlay ----------
 
 const CSS = `
-.mask, .bubble { position: fixed; display: none; box-sizing: border-box; pointer-events: none; user-select: none; }
+.mask, .bubble, .highlight { position: fixed; display: none; box-sizing: border-box; pointer-events: none; user-select: none; }
 .bubble {
   max-width: 320px; padding: 1px 6px; border-radius: 4px;
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif; line-height: 1.3;
@@ -485,12 +501,23 @@ const CSS = `
 @media (prefers-color-scheme: dark) {
   .bubble { background: #1f1f1f; color: #f2f2f2; border-color: rgba(255, 255, 255, .35); }
 }
+.hl-box { border: 2px solid #2563eb; border-radius: 3px; background: transparent; }
+.hl-underline { border-bottom: 2px solid #2563eb; background: transparent; }
+.hl-bg { background: rgba(37, 99, 235, 0.18); border-radius: 2px; }
+.hl-box-bg { border: 1.5px solid #2563eb; background: rgba(37, 99, 235, 0.15); border-radius: 3px; }
+@media (prefers-color-scheme: dark) {
+  .hl-box { border-color: #60a5fa; }
+  .hl-underline { border-bottom-color: #60a5fa; }
+  .hl-bg { background: rgba(96, 165, 250, 0.25); }
+  .hl-box-bg { border-color: #60a5fa; background: rgba(96, 165, 250, 0.22); }
+}
 `;
 
 let overlayHost = null;
 let overlayRoot = null;
 let mask = null;
 let bubble = null;
+let highlight = null;
 
 function ensureOverlay() {
   if (overlayHost && overlayHost.isConnected) return;
@@ -513,9 +540,11 @@ function ensureOverlay() {
   }
   mask = document.createElement('div');
   mask.className = 'mask';
+  highlight = document.createElement('div');
+  highlight.className = 'highlight';
   bubble = document.createElement('div');
   bubble.className = 'bubble';
-  root.append(mask, bubble);
+  root.append(mask, highlight, bubble);
   document.documentElement.append(overlayHost);
 }
 
@@ -547,6 +576,17 @@ function render(hit) {
   setBox(bubble, cover ? { 'min-width': rect.width, 'min-height': rect.height } : {});
   setBox(mask, { left: rect.left, top: rect.top, width: rect.width, height: rect.height });
   mask.style.setProperty('display', state.mode === 'blur' ? 'block' : 'none');
+
+  // Highlight word boundaries (box, underline, bg)
+  const hlStyle = state.zhSettings ? state.zhSettings.highlightStyle : 'none';
+  if (highlight && hlStyle && hlStyle !== 'none' && !cover) {
+    setBox(highlight, { left: rect.left - 1, top: rect.top - 1, width: rect.width + 2, height: rect.height + 2 });
+    highlight.className = `highlight hl-${hlStyle}`;
+    highlight.style.setProperty('display', 'block');
+  } else if (highlight) {
+    highlight.style.setProperty('display', 'none');
+  }
+
   bubble.style.setProperty('display', 'block');
   const size = bubble.getBoundingClientRect();
   const anchor = cover ? rect : { left: rect.left, top: rect.top - 2, bottom: rect.bottom + 2 };
@@ -575,6 +615,7 @@ function hide() {
   lastVisibleAt = performance.now();
   bubble.style.setProperty('display', 'none');
   mask.style.setProperty('display', 'none');
+  if (highlight) highlight.style.setProperty('display', 'none');
 }
 
 function show(hit) {
