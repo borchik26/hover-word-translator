@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Hover Word Translator (Chinese to Russian)
 // @namespace    https://github.com/borchik26/hover-word-translator
-// @version      2.1.0
+// @version      2.2.0
 // @description  Shows Russian translation and pinyin for Chinese words under the cursor with bidirectional matching segmentation. Dictionaries: BKRS, CC-CEDICT.
 // @match        *://*/*
 // @run-at       document-idle
