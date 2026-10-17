@@ -178,7 +178,7 @@ hover-word-translator/
 
 ### Phase 5: Сквозное E2E тестирование и фикстуры
 
-- **Status:** Not started
+- **Status:** Done
 - **Scope:** Создание HTML-фикстуры с китайским текстом (`test/fixture-zh.html`) для проверки на реальных DOM-деревьях, проверка сосуществования обоих скриптов на одной странице.
 - **Files touched:** `test/fixture-zh.html`, `test/e2e-coexistence.test.mjs`, `README.md`
 - **Acceptance criteria:** На тестовой странице китайские слова подсвечиваются и переводятся, английский скрипт игнорирует китайский текст, китайский скрипт игнорирует английский.

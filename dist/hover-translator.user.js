@@ -355,22 +355,29 @@ const Core = (() => {
 const SHOW_DELAY_MS = 200;
 const WARM_MS = 500; // next word shows at once if the overlay was visible this recently
 const MOVE_EPS_PX = 2;
-const HOST = Core.hostKey(location);
+const Engine = typeof CoreZh !== 'undefined' ? CoreZh : Core;
+const HOST = Engine.hostKey(location);
 const IS_TOP = window.top === window;
 
 const state = {
   dict: null,
   dictFailed: false,
-  disabledHosts: Core.parseHosts(GM_getValue('disabledHosts')),
-  mode: Core.parseMode(GM_getValue('overlayMode')),
-  guess: Core.parseGuess(GM_getValue('guessEnabled')),
+  disabledHosts: Engine.parseHosts(GM_getValue('disabledHosts')),
+  mode: Engine.parseMode(GM_getValue('overlayMode')),
+  guess: Engine.parseGuess ? Engine.parseGuess(GM_getValue('guessEnabled')) : false,
+  zhSettings: Engine.parseSettings ? Engine.parseSettings(GM_getValue('zh_settings')) : null,
 };
 
 function loadDict() {
   if (state.dict || state.dictFailed) return state.dict;
   try {
-    const dict = JSON.parse(GM_getResourceText('dict'));
-    if (!Core.validateDict(dict)) throw new Error('unexpected dictionary format');
+    const resourceName = typeof CoreZh !== 'undefined'
+      ? (state.zhSettings && state.zhSettings.dictSource === 'cedict' ? 'dict_cedict' : 'dict_bkrs')
+      : 'dict';
+    const raw = GM_getResourceText(resourceName);
+    if (!raw) throw new Error(`resource ${resourceName} not found`);
+    const dict = JSON.parse(raw);
+    if (!Engine.validateDict(dict)) throw new Error('unexpected dictionary format');
     state.dict = dict;
   } catch (err) {
     state.dictFailed = true;
@@ -400,6 +407,7 @@ const CSS = `
 `;
 
 let overlayHost = null;
+let overlayRoot = null;
 let mask = null;
 let bubble = null;
 
@@ -412,6 +420,7 @@ function ensureOverlay() {
   for (const [prop, value] of hostStyle) overlayHost.style.setProperty(prop, value, 'important');
   overlayHost.setAttribute('aria-hidden', 'true');
   const root = overlayHost.attachShadow({ mode: 'closed' });
+  overlayRoot = root;
   try {
     const sheet = new CSSStyleSheet();
     sheet.replaceSync(CSS);
@@ -427,6 +436,14 @@ function ensureOverlay() {
   bubble.className = 'bubble';
   root.append(mask, bubble);
   document.documentElement.append(overlayHost);
+}
+
+function openSettings() {
+  if (typeof SettingsUI === 'undefined' || !state.zhSettings) return;
+  ensureOverlay();
+  SettingsUI.mount(overlayRoot, state.zhSettings, (newSettings) => {
+    GM_setValue('zh_settings', newSettings);
+  });
 }
 
 function setBox(el, box) {
@@ -452,7 +469,7 @@ function render(hit) {
   bubble.style.setProperty('display', 'block');
   const size = bubble.getBoundingClientRect();
   const anchor = cover ? rect : { left: rect.left, top: rect.top - 2, bottom: rect.bottom + 2 };
-  const pos = Core.clampRect(anchor, size, vp, !cover);
+  const pos = Engine.clampRect(anchor, size, vp, !cover);
   bubble.style.setProperty('left', `${pos.left}px`);
   bubble.style.setProperty('top', `${pos.top}px`);
 }
@@ -514,17 +531,20 @@ function hitAt(x, y, target) {
   const parent = node.parentElement;
   if (editable(parent)) return null;
   const langEl = parent.closest('[lang]');
-  if (langEl && !Core.langAllowed(langEl.getAttribute('lang'))) return null;
+  if (langEl && !Engine.langAllowed(langEl.getAttribute('lang'))) return null;
 
   const dict = loadDict();
   if (!dict) return null;
-  const res = Core.lookup(dict, node.data, offset, { guess: state.guess });
+  const res = Engine.lookup(dict, node.data, offset, {
+    guess: state.guess,
+    settings: state.zhSettings,
+  });
   if (!res) return null;
   const range = document.createRange();
   range.setStart(node, res.start);
   range.setEnd(node, res.end);
   const rects = Array.from(range.getClientRects());
-  if (!Core.pointInRects(x, y, rects)) return null; // padding, empty space right of a line
+  if (!Engine.pointInRects(x, y, rects)) return null; // padding, empty space right of a line
   return { node, start: res.start, end: res.end, translation: res.translation, rects };
 }
 
@@ -577,7 +597,13 @@ document.addEventListener('pointerdown', hide, passiveCapture);
 document.addEventListener('touchstart', hide, passiveCapture);
 document.addEventListener('mouseout', (e) => e.relatedTarget === null && hide(), passiveCapture);
 document.addEventListener('visibilitychange', hide);
-document.addEventListener('keydown', (e) => e.key === 'Escape' && hide(), true);
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') hide();
+  if (e.altKey && (e.key === 's' || e.key === 'ы')) {
+    e.preventDefault();
+    openSettings();
+  }
+}, true);
 window.addEventListener('blur', hide);
 window.addEventListener('resize', hide);
 
@@ -587,7 +613,7 @@ let menuIds = [];
 
 function renderMenu() {
   for (const id of menuIds) GM_unregisterMenuCommand(id);
-  const labels = Core.menuLabels({
+  const labels = Engine.menuLabels({
     host: HOST,
     disabled: state.disabledHosts.includes(HOST),
     mode: state.mode,
@@ -596,25 +622,34 @@ function renderMenu() {
   });
   menuIds = [
     GM_registerMenuCommand(labels.toggle, () => {
-      GM_setValue('disabledHosts', Core.toggleHost(state.disabledHosts, HOST));
+      GM_setValue('disabledHosts', Engine.toggleHost(state.disabledHosts, HOST));
     }),
-    GM_registerMenuCommand(labels.mode, () => GM_setValue('overlayMode', Core.nextMode(state.mode))),
-    GM_registerMenuCommand(labels.guess, () => GM_setValue('guessEnabled', !state.guess)),
+    GM_registerMenuCommand(labels.mode, () => GM_setValue('overlayMode', Engine.nextMode(state.mode))),
   ];
+  if (labels.guess) menuIds.push(GM_registerMenuCommand(labels.guess, () => GM_setValue('guessEnabled', !state.guess)));
   if (labels.warning) menuIds.push(GM_registerMenuCommand(labels.warning, () => {}));
+  if (typeof SettingsUI !== 'undefined' && state.zhSettings) {
+    menuIds.push(GM_registerMenuCommand('⚙ Настройки (ZH)', openSettings));
+  }
 }
 
 // The listener also fires in the tab that changed the value, so it is the only re-render path.
 function onSettingChanged(name, _old, value) {
-  if (name === 'disabledHosts') state.disabledHosts = Core.parseHosts(value);
-  else if (name === 'overlayMode') state.mode = Core.parseMode(value);
-  else if (name === 'guessEnabled') state.guess = Core.parseGuess(value);
+  if (name === 'disabledHosts') state.disabledHosts = Engine.parseHosts(value);
+  else if (name === 'overlayMode') state.mode = Engine.parseMode(value);
+  else if (name === 'guessEnabled' && Engine.parseGuess) state.guess = Engine.parseGuess(value);
+  else if (name === 'zh_settings' && Engine.parseSettings) {
+    state.zhSettings = Engine.parseSettings(value);
+    state.dict = null;
+    state.dictFailed = false;
+  }
   hide();
   if (IS_TOP) renderMenu();
 }
 GM_addValueChangeListener('disabledHosts', onSettingChanged);
 GM_addValueChangeListener('overlayMode', onSettingChanged);
 GM_addValueChangeListener('guessEnabled', onSettingChanged);
+GM_addValueChangeListener('zh_settings', onSettingChanged);
 
 if (IS_TOP) renderMenu();
 

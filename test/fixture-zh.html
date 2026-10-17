@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>Chinese Hover Translation Test Fixture</title>
+  <style>
+    body { font-family: system-ui, -apple-system, sans-serif; max-width: 800px; margin: 40px auto; line-height: 1.8; font-size: 18px; }
+    .box { border: 1px solid #ccc; padding: 16px; margin: 16px 0; border-radius: 6px; }
+    .mixed { font-size: 20px; }
+  </style>
+</head>
+<body>
+  <h1>Chinese Hover Translation Fixture</h1>
+
+  <div class="box">
+    <h2>1. Базовые фразы и приветствия</h2>
+    <p>你好，世界！很高兴认识你。</p>
+    <p>中国是一个伟大的国家，拥有五千年的悠久历史和灿烂文化。</p>
+  </div>
+
+  <div class="box">
+    <h2>2. Омонимичные стыки и длинные слова (BiMM)</h2>
+    <p>我们正在认真地研究生命科学的前沿问题。</p>
+    <p>研究生们在实验室里努力工作。</p>
+  </div>
+
+  <div class="box">
+    <h2>3. Смешанный текст (китайский + английский)</h2>
+    <p class="mixed">
+      I love learning 中文 because it is fascinating.
+      В этой строке en-скрипт должен переводить "learning", а zh-скрипт — "中文".
+    </p>
+  </div>
+
+  <div class="box">
+    <h2>4. Традиционные иероглифы</h2>
+    <p>這個世界非常美麗，我們應該保護它。</p>
+  </div>
+
+  <div class="box">
+    <h2>5. Подсказка по проверке</h2>
+    <p>Нажмите <strong>Alt+S</strong> для открытия панели настроек (ZH).</p>
+  </div>
+</body>
+</html>
